@@ -40,6 +40,11 @@ authentication construction is intentionally deferred to Task 0009.
   padding rule; document its remaining size-class and traffic-analysis leakage.
 - Keep key/version rotation and migration client-side. The API may persist or
   atomically replace ciphertext but must never unwrap, re-encrypt, or inspect it.
+- During compromise-driven ARK replacement, authenticate and unwrap every live
+  kind-`0x03` child with the old ARK, then re-wrap the same material under the
+  new ARK in fresh canonical envelopes. The Task 0004 successor state must
+  atomically contain the new root wrappers and complete child-wrapper set; do
+  not activate a partial migration.
 - Reject item/index `generation = 0`, blob chunk numbers above 16,777,215, and
   every uint64 overflow structurally. Task 0004, not the envelope parser,
   validates authenticated monotonic successor, stale, and replay behavior.
@@ -53,6 +58,8 @@ authentication construction is intentionally deferred to Task 0009.
 | Reuse wrapper under another purpose or child-key type | AAD mismatch or authenticated post-decrypt type validation failure |
 | Alter kind-`0x03` internal zero padding | Authenticated canonical-padding failure; no key material returned |
 | Infer child key type from ciphertext size | Not possible for v1 kind `0x03`; all such ciphertexts are 147 bytes |
+| Missing, malformed, or wrong-old-ARK child during ARK migration | Reject the entire migration; new ARK is not active |
+| Partial root/child replacement state | Reject as non-atomic; retain the old active state |
 | KDF downgrade or resource-exhaustion values | Reject before KDF execution |
 | Unknown format, suite, kind, flag, type, or nonzero reserved byte | Reject without fallback |
 | Noncanonical or absent padding marker | Reject after authentication |
@@ -64,7 +71,7 @@ authentication construction is intentionally deferred to Task 0009.
 
 | Material | Create/use | Wrap/encrypt authority | Rotation/recovery |
 | --- | --- | --- | --- |
-| ARK | 32 random bytes, unlocked client only | password or recovery root wrapper | ordinary wrapper change retains ARK epoch; compromise creates a new ARK epoch and replaces each exposed authority before it wraps that ARK |
+| ARK | 32 random bytes, unlocked client only | password or recovery root wrapper | ordinary wrapper change retains ARK epoch; compromise creates a new ARK epoch, replaces each exposed authority, and atomically rewraps every live child under the new ARK |
 | Vault/item/attachment keys | 32 random bytes per hierarchy node | parent-derived wrapper subkey | new key/version; old envelope retained only by migration policy |
 | Item/blob/index payload | trusted-client plaintext | labelled child-key AEAD subkey | re-encrypt with new child key/version |
 | Password key | local Argon2id output from strict UTF-8 bytes | one password root wrapper only | fresh salt and wrapper revision on ordinary password change; suspected exposure requires a new master password before the new ARK is wrapped |
@@ -79,11 +86,14 @@ prior state. Mutation-signing material is Task 0004's separate responsibility;
 recovery authentication material and signing remain Task 0009's separate
 purpose.
 
-Replacing root authorities is the minimum action that prevents a known old
-password or recovery secret from unwrapping the replacement ARK. If the ARK may
-have been exposed, forward protection also requires new descendant keys and
-payload re-encryption; historical copies already obtained by an attacker cannot
-be made confidential again.
+Replacing root authorities plus rewrapping every live child under the new ARK is
+the minimum action that both prevents a known old password or recovery secret
+from unwrapping the replacement ARK and restores a functional hierarchy. It
+does not protect a descendant key that an attacker already obtained. If the ARK
+may have been exposed, forward protection also requires new descendant and
+mutation-signing keys, new public mutation-signing bindings, and payload
+re-encryption; historical copies already obtained by an attacker cannot be made
+confidential again.
 
 JavaScript/WASM memory cleanup remains best effort. The protocol does not claim
 that a compromised unlocked client, malicious delivered client, or malicious

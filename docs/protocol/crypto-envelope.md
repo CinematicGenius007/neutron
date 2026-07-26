@@ -260,11 +260,35 @@ The minimum authority replacement depends on what was exposed:
 
 This minimum root-authority replacement prevents a known old password or
 recovery secret from immediately unwrapping the replacement ARK. It does not
-repair descendants that an attacker may already have unwrapped with the exposed
-ARK. Full post-ARK-compromise rotation therefore creates new vault, item, and
-attachment keys, rewraps the new hierarchy, rotates the mutation-signing key
-and its public binding under Task 0004, and re-encrypts every live payload.
-It cannot make ciphertext or plaintext copies already obtained by the attacker
+by itself make a new ARK functional: every live kind-`0x03` child wrapper is
+encrypted with a subkey derived from the old ARK. The trusted client MUST
+complete this minimum ARK migration while it still holds the old ARK:
+
+1. Authenticate and decrypt every live kind-`0x03` wrapper using the old ARK.
+   Reject the migration if any required wrapper is missing, unauthenticated,
+   malformed, noncanonical, or cannot be unwrapped.
+2. Re-wrap the same authenticated child key material under the new ARK in a
+   fresh canonical kind-`0x03` envelope with a fresh random nonce. Preserve the
+   child `objectId` and child `keyVersion` when the key material itself is not
+   being rotated. The new parent IKM binds the wrapper to the new ARK; the
+   atomic successor account state binds the complete child-wrapper set to the
+   new ARK epoch.
+3. Include account mutation-signing private material in this rewrap without
+   changing its public identity or binding during this minimum migration.
+4. Atomically commit the fresh password/recovery root wrappers and the complete
+   replacement child-wrapper set through Task 0004's authenticated account-state
+   protocol. The new ARK MUST NOT become active unless that complete successor
+   state is accepted.
+5. Only after successor acceptance, retire the old active root and child
+   wrappers according to the encrypted backup and retention policy. Clear the
+   old ARK and temporary plaintext child-key material on a best-effort basis.
+
+Minimum ARK migration restores a functional hierarchy, but it does not provide
+forward protection if the old ARK or descendant keys were exposed. Full
+post-ARK-compromise rotation additionally generates new vault, item, attachment,
+and mutation-signing keys; updates mutation-signing public bindings under Task
+0004; rewraps the new hierarchy; and re-encrypts every live payload. It cannot
+make ciphertext or plaintext copies already obtained by the attacker
 confidential again.
 
 The authenticated account-state/mutation protocol in Task 0004 MUST commit the
@@ -313,5 +337,8 @@ generation zero and successor rejection, all documented parser failures, and
 password conversion (valid multi-byte/NUL input, invalid Unicode,
 normalization distinction, and byte-length limits). Invalid-Unicode vectors
 MUST use explicit UTF-16 code units or bytes with defined adapter semantics,
-never a lone surrogate embedded in JSON text. JSON parsing alone is not schema
-validation.
+never a lone surrogate embedded in JSON text. It MUST additionally cover a
+successful minimum child-key rewrap; missing, wrong-old-ARK, and malformed
+child-wrapper failures; partial/non-atomic migration rejection; and the
+difference between functional minimum rewrap and full descendant rotation. JSON
+parsing alone is not schema validation.

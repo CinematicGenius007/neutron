@@ -3,7 +3,7 @@
 Status: review
 Owner: unassigned
 Claimed: —
-Worktree/branch: main (baseline 1834f95)
+Worktree/branch: main (pre-remediation 7734cb6; baseline 1834f95)
 Reviewer: unassigned  
 Review claimed: —  
 Depends on: 0002  
@@ -83,6 +83,22 @@ derivation labels, KDF policy, limits, versioning, and migration behavior.
   zero padding. Item/index generations begin at one and are structurally
   nonzero; blobs remain zero-based. The invalid-Unicode seed fixture now carries
   explicit UTF-16BE code units rather than an embedded lone JSON surrogate.
+- 2026-07-26T08:36:55Z — Final remediation claim granted by the
+  user/orchestrator after independent review found that replacing the ARK did
+  not normatively re-wrap existing live kind-`0x03` child wrappers. This claim
+  is limited to functional minimum ARK migration, its full-rotation distinction,
+  security/ADR consequences, and Task 0005 vector requirements. The prior
+  baseline (`1834f95`) and follow-up remediation (`7734cb6`) were inspected and
+  the working tree was clean before this claim.
+- 2026-07-26T08:39:01Z — Final remediation completed and returned to review.
+  Minimum ARK replacement now requires authenticating and unwrapping every live
+  kind-`0x03` child under the old ARK, rewrapping the same material under the
+  new ARK with a fresh canonical envelope/nonce, and atomically committing the
+  complete root/child successor set before activation. It explicitly retains
+  mutation-signing public identity for this functional migration, rejects any
+  incomplete or malformed child set, retires old active wrappers only after
+  successor acceptance, and distinguishes this from full forward-protecting
+  descendant-key rotation.
 
 ## Handoff
 
@@ -95,6 +111,13 @@ compromise case, item/index generation boundaries, strict password encoding
 limits, and the split: Task 0004 owns mutation signing while Task 0009 owns
 recovery authentication.
 Do not begin Task 0005 or approve this task without an independent review.
+
+Final-review focus: confirm that minimum ARK migration rewraps every live child
+under the new parent while preserving child identity/version and
+mutation-signing public identity; rejects wrong-old-ARK, malformed, missing, or
+partial child sets without activating the new ARK; commits root/child successors
+atomically; clears sensitive temporary material best-effort; and does not claim
+forward protection absent full descendant-key rotation.
 
 ## Verification
 
@@ -141,6 +164,21 @@ cross-runtime execution, complete malformed-padding/generation vector coverage,
 and vector immutability. Task 0004 must bind monotonic successor/stale/replay
 checks to authenticated account state; Task 0009 must specify and perform the
 recovery-authentication public-material rotation/revocation referenced here.
+
+2026-07-26T08:39:01Z — `git diff --check`, `pnpm install --frozen-lockfile`,
+`pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm test`, and `pnpm
+build` each exited 0. `pnpm test` reported no test files. Node parsed both JSON
+documents. A standalone migration audit passed the 72-byte fixed header, the
+131-byte/147-byte fixed child wrapper and 243-byte total envelope calculation,
+canonical internal-padding arithmetic, complete-child atomic activation
+requirements, sensitive-material clearing requirement, and the distinction
+between minimum functional migration and full forward-protecting rotation.
+
+Remaining assumptions: Task 0005 must turn the enumerated minimum-migration
+success/failure requirements into executable cross-runtime vectors. Task 0004
+must define the authenticated atomic successor-state transaction and determine
+the authoritative live child-wrapper set. Task 0009 must rotate/revoke recovery
+authentication public material when the recovery secret is replaced.
 
 ## Review
 

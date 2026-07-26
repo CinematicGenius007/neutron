@@ -29,9 +29,12 @@ wrapper replacement is distinct from compromise-driven ARK rotation. A password
 compromise requires a new password, a recovery-secret compromise requires a new
 secret plus Task 0009 recovery-public-material rotation/revocation, and an
 ARK-only compromise may retain other uncompromised authorities while creating
-fresh wrappers. This is the minimum authority replacement; ARK exposure also
-requires descendant-key rotation and payload re-encryption for forward
-protection. This ADR deliberately does not choose the recovery
+fresh wrappers. Minimum replacement also atomically rewraps every live child
+under the new ARK, while retaining its child identity/version and (for the
+mutation-signing key) public identity. This restores functionality but does not
+provide forward protection after actual ARK/descendant exposure. Full descendant
+rotation requires new descendant and mutation-signing keys, new public binding,
+and payload re-encryption. This ADR deliberately does not choose the recovery
 challenge-response construction; Task 0009 owns recovery authentication/signing
 and must consume this label/format registry. Task 0004 owns account
 mutation-signing material and its mutation transcript, public binding, and
@@ -72,7 +75,9 @@ zero-based.
   has one fixed ciphertext length and canonical internal padding.
 - Recovery authority replacement must replace the actually exposed authority;
   a new ARK wrapped by the same exposed password or recovery secret would not
-  remediate compromise. Account-state monotonicity remains Task 0004 work.
+  remediate compromise. The complete live child-wrapper set must also be
+  atomically rewrapped under the new ARK before it becomes active.
+  Account-state monotonicity remains Task 0004 work.
 - The mutation-signing-key inner encoding remains an explicit Task 0004
   dependency; its opaque bytes are not interpreted by the envelope parser.
 
@@ -96,8 +101,9 @@ client may overwrite an envelope it cannot authenticate and parse.
   parsing alone is insufficient.
 - Implement the libsodium-compatible Argon2id and RFC 5869 HKDF known answers.
 - Task 0005 must complete deterministic envelope, fixed-child-padding,
-  authority/descendant rotation, generation, password-encoding, and mutation
-  vectors before provider code ships or vectors become immutable.
+  minimum-child-rewrap and full-descendant rotation, generation,
+  password-encoding, and mutation vectors before provider code ships or vectors
+  become immutable.
 - Independently review parsing, limits, AAD construction, labels, and migration
   behavior before this ADR is accepted.
 

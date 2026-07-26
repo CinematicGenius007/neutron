@@ -44,6 +44,7 @@ export interface VectorCatalog {
 }
 
 const validatedCatalogBrand: unique symbol = Symbol("validatedCatalog");
+const validatedCatalogs = new WeakSet<object>();
 
 export interface ValidatedCatalog {
   readonly [validatedCatalogBrand]: true;
@@ -92,7 +93,9 @@ export function loadValidatedCatalog(
     if (ids.has(vector.id)) throw new Error(`duplicate vector id: ${vector.id}`);
     ids.add(vector.id);
   }
-  return deepFreeze({ [validatedCatalogBrand]: true, catalog });
+  const validated = deepFreeze({ [validatedCatalogBrand]: true as const, catalog });
+  validatedCatalogs.add(validated);
+  return validated;
 }
 
 const hex = /^(?:[0-9a-f]{2})*$/;
@@ -154,6 +157,9 @@ export async function verifyCatalog(
   validated: ValidatedCatalog,
   verifier: VectorVerifier,
 ): Promise<readonly VerificationResult[]> {
+  if (!validatedCatalogs.has(validated)) {
+    throw new Error("catalog was not produced by loadValidatedCatalog");
+  }
   return Promise.all(
     validated.catalog.cases.map(async (vector) =>
       compare(vector, await verifier.verify(requestOf(vector))),

@@ -207,4 +207,21 @@ describe("crypto-envelope v1 catalog", () => {
       { id: firstCase.id, passed: false, reason: "invalid-observation" },
     ]);
   });
+
+  it("rejects forged validated wrappers before invoking an adapter", async () => {
+    const raw = await loadJson(fixturePath);
+    const forged = { catalog: raw } as unknown as ValidatedCatalog;
+    const verifier: VectorVerifier = {
+      verify: () => {
+        throw new Error("must not run");
+      },
+    };
+    await expect(verifyCatalog(forged, verifier)).rejects.toThrow(
+      "catalog was not produced by loadValidatedCatalog",
+    );
+    const loaded = await loadCatalog();
+    await expect(verifyCatalog({ ...loaded }, verifier)).rejects.toThrow(
+      "catalog was not produced by loadValidatedCatalog",
+    );
+  });
 });

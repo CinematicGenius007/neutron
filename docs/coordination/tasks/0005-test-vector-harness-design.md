@@ -84,6 +84,13 @@ persisted cryptographic operation and parser boundary.
   independent anchor. An object-alias probe also reproduced expectation exposure.
   This pass will make validated loading mandatory, remove the generator from the
   default test graph, and use exact primitive anchors before further catalog work.
+- 2026-07-26T16:34:57Z — Boundary remediation claim granted to `/root` after
+  `task_0005_boundary_reviewer` returned FAIL with 0 P0, 3 P1, and 1 P2:
+  expectation aliasing remained schema-valid, the TypeScript brand was forgeable
+  at runtime, assertion-only successes were not executable, and the task record
+  omitted those defects. This pass is limited to strict boundary/schema honesty
+  and coordination records; it will not generate the full vector set or configure
+  browser execution.
 
 ## Handoff
 
@@ -129,13 +136,18 @@ test and anchored HKDF, Argon2id, and XChaCha outputs. The catalog is still
 metadata-heavy and no real-browser runner is configured, so this task remains
 blocked.
 
-Blocker: exhaustive positive/negative primitive and envelope verification cannot
-be completed until the candidate catalog is expanded into exact reviewed
-envelope/vector bytes and a real-browser runner is available. This is not a
+2026-07-26T16:34:57Z — Added a module-private runtime registry so forged or
+spread validated-catalog wrappers fail before an adapter can run; regression
+tests cover both JavaScript-level forgeries. This does not resolve the remaining
+strict operation-schema, executable-versus-pending-manifest, or browser-execution
+work; all are blockers before concrete catalog generation may proceed.
+
+Blocker: strict operation-discriminated schemas and an executable-only catalog
+must first separate the pending scenario requirements from concrete verified
+vectors. Then the pending requirements must become exact reviewed envelope bytes,
+and a real-browser runner must execute the committed catalog. This is not a
 Stage 1 production-provider dependency: `packages/test-vectors/src/reference-
-generator.ts` provides the test-only primitive machinery. The smallest next step
-is to generate and review concrete fixture candidates, then run the unchanged
-catalog in Node and a real browser before requesting independent review.
+generator.ts` provides test-only primitive machinery.
 
 ## Review
 
@@ -143,3 +155,8 @@ catalog in Node and a real browser before requesting independent review.
 findings: expectation echoing, scenario-only vectors, an underconstrained schema,
 and NUL-delimited assertion comparison. Remediation is incomplete until concrete
 vector coverage and browser execution are complete.
+
+2026-07-26T16:34:57Z — FAIL — `task_0005_boundary_reviewer` found 0 P0, 3 P1,
+and 1 P2: schema-valid expectation aliasing, a forgeable runtime brand,
+assertion-only executable successes, and an incomplete blocker record. The
+runtime-brand issue is remediated; the remaining boundary findings are open.

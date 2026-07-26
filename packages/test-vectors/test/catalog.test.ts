@@ -8,12 +8,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   loadValidatedCatalog,
+  type ValidatedCatalog,
   type VectorCatalog,
   type VectorObservation,
   type VectorVerifier,
   verifyCatalog,
 } from "../src/index.js";
-import { generateSyntheticXChaChaCandidate } from "../src/reference-generator.js";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const fixturePath = join(packageRoot, "fixtures/crypto-envelope-v1.json");
@@ -24,23 +24,22 @@ async function loadJson(path: string): Promise<unknown> {
   return JSON.parse(await readFile(path, "utf8")) as unknown;
 }
 
-async function loadCatalog(): Promise<VectorCatalog> {
+async function loadCatalog(): Promise<ValidatedCatalog> {
   const [schema, candidate] = await Promise.all([loadJson(schemaPath), loadJson(fixturePath)]);
   const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
   return loadValidatedCatalog(candidate, validate);
 }
 
+async function validatedSubset(
+  catalog: VectorCatalog,
+  cases: readonly VectorCatalog["cases"][number][],
+): Promise<ValidatedCatalog> {
+  const schema = await loadJson(schemaPath);
+  const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
+  return loadValidatedCatalog({ ...catalog, cases }, validate);
+}
+
 describe("crypto-envelope v1 catalog", () => {
-  it("keeps the test-only reference generator outside normal verification", () => {
-    expect(
-      generateSyntheticXChaChaCandidate({
-        aad: "00",
-        key: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-        nonce: "000102030405060708090a0b0c0d0e0f1011121314151617",
-        plaintext: "0102",
-      }),
-    ).toEqual({ decrypted: "0102", ciphertext: expect.stringMatching(/^[0-9a-f]{36}$/) });
-  });
   it("is validated by a real Draft 2020-12 JSON Schema validator", async () => {
     const [schema, rawCatalog] = await Promise.all([loadJson(schemaPath), loadJson(fixturePath)]);
     const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
@@ -74,14 +73,14 @@ describe("crypto-envelope v1 catalog", () => {
 
   it("represents every protocol boundary with explicit rejection expectations", async () => {
     const catalog = await loadCatalog();
-    const ids = new Set(catalog.cases.map((vector) => vector.id));
+    const ids = new Set(catalog.catalog.cases.map((vector) => vector.id));
     const kinds = new Set(
-      catalog.cases
+      catalog.catalog.cases
         .filter((vector) => vector.operation === "envelope")
         .map((vector) => vector.input.kind),
     );
     const labels = new Set(
-      catalog.cases
+      catalog.catalog.cases
         .filter((vector) => typeof vector.input.label === "string")
         .map((vector) => vector.input.label),
     );
@@ -119,7 +118,7 @@ describe("crypto-envelope v1 catalog", () => {
     ]) {
       expect(ids.has(id)).toBe(true);
     }
-    for (const vector of catalog.cases.filter(
+    for (const vector of catalog.catalog.cases.filter(
       (candidate) => candidate.expect.outcome === "reject",
     )) {
       expect(vector.expect.error).toBeDefined();
@@ -145,10 +144,10 @@ describe("crypto-envelope v1 catalog", () => {
         return observations[vector.id] ?? { outcome: "reject", error: "structure" };
       },
     };
-    const selected: VectorCatalog = {
-      ...catalog,
-      cases: catalog.cases.filter((vector) => vector.id in observations),
-    };
+    const selected = await validatedSubset(
+      catalog.catalog,
+      catalog.catalog.cases.filter((vector) => vector.id in observations),
+    );
 
     const results = await verifyCatalog(selected, verifier);
     expect(results).toEqual([
@@ -159,11 +158,11 @@ describe("crypto-envelope v1 catalog", () => {
 
   it("fails a verifier result that does not exactly match a vector", async () => {
     const catalog = await loadCatalog();
-    const firstCase = catalog.cases[0];
+    const firstCase = catalog.catalog.cases[0];
     if (firstCase === undefined) {
       throw new Error("fixture has no cases");
     }
-    const selected: VectorCatalog = { ...catalog, cases: [firstCase] };
+    const selected = await validatedSubset(catalog.catalog, [firstCase]);
     const verifier: VectorVerifier = {
       verify: () => ({ outcome: "success", output: "00" }),
     };
@@ -175,9 +174,9 @@ describe("crypto-envelope v1 catalog", () => {
 
   it("never passes expectations to an adapter and rejects malformed observations", async () => {
     const catalog = await loadCatalog();
-    const firstCase = catalog.cases[0];
+    const firstCase = catalog.catalog.cases[0];
     if (firstCase === undefined) throw new Error("fixture has no cases");
-    const selected: VectorCatalog = { ...catalog, cases: [firstCase] };
+    const selected = await validatedSubset(catalog.catalog, [firstCase]);
     const echoingVerifier: VectorVerifier = {
       verify(request) {
         expect("expect" in request).toBe(false);
@@ -188,18 +187,19 @@ describe("crypto-envelope v1 catalog", () => {
       verify: () => ({
         outcome: "success",
         output: firstCase.expect.output,
-        assertions: ["a\u0000b"],
+        assertions: ["aaa\u0000bbb"],
       }),
     };
-    const withAssertions: VectorCatalog = {
-      ...selected,
-      cases: [
-        {
-          ...firstCase,
-          expect: { outcome: "success", output: firstCase.expect.output, assertions: ["a", "b"] },
+    const withAssertions = await validatedSubset(catalog.catalog, [
+      {
+        ...firstCase,
+        expect: {
+          outcome: "success",
+          output: firstCase.expect.output,
+          assertions: ["aaa", "bbb"],
         },
-      ],
-    };
+      },
+    ]);
     await expect(verifyCatalog(selected, echoingVerifier)).resolves.toEqual([
       { id: firstCase.id, passed: false, reason: "invalid-observation" },
     ]);

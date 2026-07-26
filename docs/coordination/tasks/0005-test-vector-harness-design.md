@@ -1,8 +1,8 @@
 # TASK 0005 — Test-vector and adversarial harness design
 
-Status: blocked
-Owner: unassigned
-Claimed: —
+Status: active
+Owner: /root
+Claimed: 2026-07-26T15:49:57Z
 Worktree/branch: shared-worktree (main)
 Reviewer: unassigned  
 Review claimed: —  
@@ -77,6 +77,13 @@ persisted cryptographic operation and parser boundary.
   Poly1305, HKDF-SHA-256, and Argon2id candidate generation. The existing 42
   cases are still not a complete concrete catalog, so the digest remains a
   candidate-only integrity check and the task is blocked.
+- 2026-07-26T15:49:57Z — Remediation claim granted to `/root` after independent
+  reviewer `task_0005_remediation_reviewer` returned FAIL with no P0 and three
+  P1 findings: the schema is not operation-discriminated, assertion-only success
+  cases cannot be honestly verified, and the generator smoke test lacks an
+  independent anchor. An object-alias probe also reproduced expectation exposure.
+  This pass will make validated loading mandatory, remove the generator from the
+  default test graph, and use exact primitive anchors before further catalog work.
 
 ## Handoff
 

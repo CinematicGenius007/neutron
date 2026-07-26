@@ -43,6 +43,13 @@ export interface VectorCatalog {
   readonly format: "neutron-crypto-vectors/v1";
 }
 
+const validatedCatalogBrand: unique symbol = Symbol("validatedCatalog");
+
+export interface ValidatedCatalog {
+  readonly [validatedCatalogBrand]: true;
+  readonly catalog: VectorCatalog;
+}
+
 export interface VectorObservation {
   readonly assertions?: readonly string[];
   readonly error?: VectorError;
@@ -65,19 +72,27 @@ export interface CatalogValidator {
   errors?: unknown;
 }
 
+function deepFreeze<T>(value: T): T {
+  if (typeof value === "object" && value !== null) {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+
 export function loadValidatedCatalog(
   candidate: unknown,
   validate: CatalogValidator,
-): VectorCatalog {
+): ValidatedCatalog {
   if (!validate(candidate))
     throw new Error(`invalid vector catalog: ${JSON.stringify(validate.errors)}`);
-  const catalog = candidate as VectorCatalog;
+  const catalog = structuredClone(candidate) as VectorCatalog;
   const ids = new Set<string>();
   for (const vector of catalog.cases) {
     if (ids.has(vector.id)) throw new Error(`duplicate vector id: ${vector.id}`);
     ids.add(vector.id);
   }
-  return catalog;
+  return deepFreeze({ [validatedCatalogBrand]: true, catalog });
 }
 
 const hex = /^(?:[0-9a-f]{2})*$/;
@@ -132,14 +147,16 @@ function compare(vector: VectorCase, value: unknown): VerificationResult {
 
 function requestOf(vector: VectorCase): VectorRequest {
   const { expect: _expect, ...request } = vector;
-  return request;
+  return deepFreeze(structuredClone(request));
 }
 
 export async function verifyCatalog(
-  catalog: VectorCatalog,
+  validated: ValidatedCatalog,
   verifier: VectorVerifier,
 ): Promise<readonly VerificationResult[]> {
   return Promise.all(
-    catalog.cases.map(async (vector) => compare(vector, await verifier.verify(requestOf(vector)))),
+    validated.catalog.cases.map(async (vector) =>
+      compare(vector, await verifier.verify(requestOf(vector))),
+    ),
   );
 }

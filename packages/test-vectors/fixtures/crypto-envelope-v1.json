@@ -51,12 +51,14 @@
       }
     },
     {
-      "id": "password-utf8-reject-unpaired-surrogate",
-      "operation": "password-utf8-reject",
+      "id": "password-utf16be-reject-unpaired-surrogate",
+      "operation": "password-utf16be-reject",
       "input": {
-        "text": "\ud800"
+        "utf16be": "d800"
       },
-      "parameters": {},
+      "parameters": {
+        "adapter": "decode-utf16be-as-unicode-scalars-and-reject-unpaired-surrogates"
+      },
       "expect": {
         "result": "reject",
         "error": "invalid-password-encoding"

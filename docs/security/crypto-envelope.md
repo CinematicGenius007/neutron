@@ -29,8 +29,9 @@ authentication construction is intentionally deferred to Task 0009.
 - Derive a dedicated high-entropy subkey for each registered purpose. The only
   password-derived key is used directly for its single password-wrapper AEAD.
   Derive the kind-`0x03` `ark/child-key-wrap` key before decryption, then
-  validate the authenticated encrypted material type; never derive a key from
-  encrypted content.
+  validate its authenticated encrypted material type, length, and canonical
+  zero padding; never derive a key from encrypted content. Every kind-`0x03`
+  ciphertext is 147 bytes so its inner material type is not size metadata.
 - Before Argon2id, reject invalid Unicode input, encode valid Unicode scalar
   values as unnormalized UTF-8, and enforce the 1–1,024-byte password bound.
   JavaScript code must not rely on replacement-character behavior from
@@ -39,6 +40,9 @@ authentication construction is intentionally deferred to Task 0009.
   padding rule; document its remaining size-class and traffic-analysis leakage.
 - Keep key/version rotation and migration client-side. The API may persist or
   atomically replace ciphertext but must never unwrap, re-encrypt, or inspect it.
+- Reject item/index `generation = 0`, blob chunk numbers above 16,777,215, and
+  every uint64 overflow structurally. Task 0004, not the envelope parser,
+  validates authenticated monotonic successor, stale, and replay behavior.
 
 ## Adversarial test matrix
 
@@ -47,6 +51,8 @@ authentication construction is intentionally deferred to Task 0009.
 | Flip/truncate/append any envelope byte | Structural or AEAD failure; no partial plaintext |
 | Substitute account/object/version/kind/header between envelopes | AEAD failure |
 | Reuse wrapper under another purpose or child-key type | AAD mismatch or authenticated post-decrypt type validation failure |
+| Alter kind-`0x03` internal zero padding | Authenticated canonical-padding failure; no key material returned |
+| Infer child key type from ciphertext size | Not possible for v1 kind `0x03`; all such ciphertexts are 147 bytes |
 | KDF downgrade or resource-exhaustion values | Reject before KDF execution |
 | Unknown format, suite, kind, flag, type, or nonzero reserved byte | Reject without fallback |
 | Noncanonical or absent padding marker | Reject after authentication |
@@ -58,11 +64,11 @@ authentication construction is intentionally deferred to Task 0009.
 
 | Material | Create/use | Wrap/encrypt authority | Rotation/recovery |
 | --- | --- | --- | --- |
-| ARK | 32 random bytes, unlocked client only | password or recovery root wrapper | ordinary wrapper change retains ARK epoch; suspected wrapper/ARK exposure requires a new ARK epoch and descendant re-encryption |
+| ARK | 32 random bytes, unlocked client only | password or recovery root wrapper | ordinary wrapper change retains ARK epoch; compromise creates a new ARK epoch and replaces each exposed authority before it wraps that ARK |
 | Vault/item/attachment keys | 32 random bytes per hierarchy node | parent-derived wrapper subkey | new key/version; old envelope retained only by migration policy |
 | Item/blob/index payload | trusted-client plaintext | labelled child-key AEAD subkey | re-encrypt with new child key/version |
-| Password key | local Argon2id output from strict UTF-8 bytes | one password root wrapper only | fresh salt and wrapper revision on ordinary password change; never persisted |
-| Recovery secret | 32 random emergency-kit value | recovery labelled subkey only | wrapper replacement increments its revision; Task 0009 defines recovery authentication, while compromise triggers ARK rotation |
+| Password key | local Argon2id output from strict UTF-8 bytes | one password root wrapper only | fresh salt and wrapper revision on ordinary password change; suspected exposure requires a new master password before the new ARK is wrapped |
+| Recovery secret | 32 random emergency-kit value | recovery labelled subkey only | wrapper replacement increments its revision; suspected exposure requires a new secret and Task 0009 recovery-public-material rotation/revocation before it wraps the new ARK |
 
 Root-wrapper records have independent, nonzero wrapper revisions and share the
 ARK epoch they unwrap. The future Task 0004 authenticated account state commits
@@ -72,6 +78,12 @@ the documented first-contact/fork limitation for a client with no authenticated
 prior state. Mutation-signing material is Task 0004's separate responsibility;
 recovery authentication material and signing remain Task 0009's separate
 purpose.
+
+Replacing root authorities is the minimum action that prevents a known old
+password or recovery secret from unwrapping the replacement ARK. If the ARK may
+have been exposed, forward protection also requires new descendant keys and
+payload re-encryption; historical copies already obtained by an attacker cannot
+be made confidential again.
 
 JavaScript/WASM memory cleanup remains best effort. The protocol does not claim
 that a compromised unlocked client, malicious delivered client, or malicious

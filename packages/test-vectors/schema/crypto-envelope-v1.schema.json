@@ -30,7 +30,7 @@
             "hkdf-sha256",
             "argon2id",
             "password-utf8",
-            "password-utf8-reject",
+            "password-utf16be-reject",
             "envelope-encrypt",
             "envelope-decrypt",
             "envelope-reject"

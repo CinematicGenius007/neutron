@@ -23,10 +23,13 @@ UUID text. A decoder MUST reject a zero `accountId`. Root wrappers use
 current root wrappers for one ARK MUST carry the same epoch. For child-key
 wrappers it is the wrapped child key's version. For payloads it is the key
 version used for that payload. `generation` is a uint64 root-wrapper revision
-for root wrappers, a uint64 revision for an item or index payload, and a uint64
-chunk number for a blob payload. It is zero for child-key wrappers. A root
-wrapper revision starts at one and increments whenever that wrapper kind is
-replaced. Counter overflow is an error, not wrap.
+for root wrappers, a uint64 ciphertext revision for item or index payloads,
+and a uint64 chunk number for blob payloads. It is zero for child-key wrappers.
+A root-wrapper revision starts at one and increments whenever that wrapper kind
+is replaced. Item and index generations start at one for a new object/key
+version and increment for every new ciphertext revision of that same
+object/key-version pair. Blob chunk generations start at zero. Counter overflow
+is an error, not wrap.
 
 The only v1 suite is `0x01`: XChaCha20-Poly1305-IETF with a 32-byte key, a
 24-byte random nonce, and its 16-byte authentication tag appended to the
@@ -76,7 +79,7 @@ before invoking a KDF or allocating ciphertext-sized memory.
 | ---: | --- | ---: | --- | --- |
 | 0x01 | password-ARK wrapper | 0 | ciphertext exactly 51 bytes | Argon2id output |
 | 0x02 | recovery-ARK wrapper | 0 | ciphertext exactly 51 bytes | recovery HKDF subkey |
-| 0x03 | ARK child-key wrapper | 0 | ciphertext 20–147 bytes | labelled ARK subkey |
+| 0x03 | ARK child-key wrapper | 0 | plaintext exactly 131 bytes; ciphertext exactly 147 bytes | labelled ARK subkey |
 | 0x04 | vault child-key wrapper | 0 | ciphertext exactly 51 bytes | labelled vault-key subkey |
 | 0x05 | item attachment-key wrapper | 0 | ciphertext exactly 51 bytes | labelled item-key subkey |
 | 0x10 | item payload | 0x01 | ciphertext 4,112–16,777,232 bytes | labelled item-key subkey |
@@ -87,8 +90,12 @@ For root-wrapper kinds, `generation` MUST be nonzero; for child-key wrappers it
 MUST be zero; and for every wrapper `flags` MUST be zero. For payload kinds,
 `flags` MUST be exactly `0x01`, `ciphertextLength - 16` MUST be a positive
 multiple of 4,096, and the unpadded plaintext limit is one less than the padded
-limit. A blob is divided into at most 16,777,216 chunks; the chunk number is
-`generation`, starts at zero, and is bound in associated data.
+limit. Item (`0x10`) and index (`0x12`) payloads MUST have a nonzero
+`generation`; zero is structurally invalid. A blob is divided into at most
+16,777,216 chunks, and its `generation` is zero-based and MUST be at most
+16,777,215. The envelope parser validates those structural ranges; Task 0004
+validates monotonicity, stale revisions, and replay against authenticated
+account state.
 
 The only v1 password-writer and reader profile is `kdf=0x01`,
 `kdfVersion=0x13`, `parallelism=1`, `memoryKiB=65536`, `iterations=3`, and
@@ -123,13 +130,33 @@ deliberately contains no exact plaintext length.
 
 ## 4. Wrapper plaintext and hierarchy
 
-Wrapper plaintext has this canonical form:
+Root, vault-child, and attachment-child wrapper plaintext has this canonical
+form:
 
 | Bytes | Field | Rule |
 | ---: | --- | --- |
 | 1 | keyMaterialType | Table 2 |
 | 2 | keyMaterialLength | big-endian; exact following length |
-| variable | keyMaterial | raw bytes; no padding |
+| variable | keyMaterial | raw bytes; exactly `keyMaterialLength` octets; no padding |
+
+An ARK child-key wrapper (kind `0x03`) instead has exactly 131 plaintext bytes:
+
+| Bytes | Field | Rule |
+| ---: | --- | --- |
+| 1 | keyMaterialType | Table 2 |
+| 2 | keyMaterialLength | big-endian; Table 2 length for the type |
+| variable | keyMaterial | exactly `keyMaterialLength` raw octets |
+| remaining | internalPadding | exactly `128 - keyMaterialLength` zero octets |
+
+The kind-`0x03` plaintext is `1 + 2 + 128 = 131` bytes and its ciphertext is
+`131 + 16 = 147` bytes including the AEAD tag. Its encoder MUST append the
+required zero octets and produce no other length. After successful AEAD
+authentication, its decoder MUST reject an
+unknown type, a type/length mismatch, any length outside 1–128, or a nonzero
+`internalPadding` octet. The encrypted `keyMaterialLength` remains the only
+source for locating the material; the fixed outer size deliberately prevents
+the server from distinguishing mutation-signing material from a random vault
+key by ciphertext length.
 
 ### Table 2 — wrapper contents
 
@@ -192,10 +219,10 @@ constructed from user input. The only v1 labels are:
 | `vault/index-shard-aead` | vault key | 0x12 |
 
 Kind `0x03` always uses `ark/child-key-wrap`, before attempting AEAD
-decryption. A decoder MUST authenticate and decrypt first, then validate that
-the encrypted `keyMaterialType` and length are permitted for kind `0x03`; it
-MUST NOT select a derivation label from encrypted data. All other kinds have
-the one label shown. The password wrapper is deliberately the exception:
+decryption. A decoder MUST authenticate and decrypt first, then validate the
+fixed-length wrapper's encrypted `keyMaterialType`, length, and canonical zero
+padding; it MUST NOT select a derivation label from encrypted data. All other
+kinds have the one label shown. The password wrapper is deliberately the exception:
 its Argon2id output is used directly once, while its kind and full header are
 still AEAD-bound. No label is reserved for export, session, authentication, or
 mutation signing; those protocols must allocate labels in a later ADR.
@@ -215,13 +242,30 @@ active record for that wrapper kind and retain the previous revision only in an
 encrypted backup/migration journal, never as another active unwrap authority.
 
 Suspected exposure of a password, recovery secret, or ARK is a compromise
-rotation, not an ordinary rewrap: create a new random ARK with the next ARK
-epoch; create fresh password and recovery wrappers with incremented wrapper
-revisions; rewrap every live child key; and rotate the mutation-signing key and
-its public binding under Task 0004. Because a compromised ARK exposes all
-reachable descendant keys and historical ciphertext, restoring forward secrecy
-also requires new vault/item/attachment keys and re-encryption of live payloads.
-It cannot make copies already obtained by the attacker confidential again.
+rotation, not an ordinary rewrap. It starts with a new random ARK at the next
+ARK epoch and fresh root wrappers/nonces (and a fresh password-wrapper salt).
+The minimum authority replacement depends on what was exposed:
+
+- For a suspected password exposure, the user MUST choose a new valid master
+  password before wrapping the new ARK. The old password MUST NOT wrap it.
+- For a suspected recovery-secret exposure, the client MUST generate a new
+  32-byte recovery secret before wrapping the new ARK. The old recovery secret
+  MUST NOT wrap it, and Task 0009 MUST rotate or revoke its corresponding
+  recovery-authentication public material before the replacement is active.
+- For an ARK-only exposure, an otherwise uncompromised password and recovery
+  secret MAY be retained, but the new ARK still requires fresh wrappers,
+  nonces, and the password-wrapper salt.
+- When more than one authority may be exposed, every corresponding authority
+  MUST be replaced before it wraps the new ARK.
+
+This minimum root-authority replacement prevents a known old password or
+recovery secret from immediately unwrapping the replacement ARK. It does not
+repair descendants that an attacker may already have unwrapped with the exposed
+ARK. Full post-ARK-compromise rotation therefore creates new vault, item, and
+attachment keys, rewraps the new hierarchy, rotates the mutation-signing key
+and its public binding under Task 0004, and re-encrypts every live payload.
+It cannot make ciphertext or plaintext copies already obtained by the attacker
+confidential again.
 
 The authenticated account-state/mutation protocol in Task 0004 MUST commit the
 active root-wrapper tuple `(kind, arkEpoch, wrapperRevision, envelopeHash)` and
@@ -234,7 +278,12 @@ parent key.
 
 Child-key rotation increments `keyVersion`, uses a new random key, writes the
 new authenticated envelope, and retains the old version only under the
-specified migration/retention policy.
+specified migration/retention policy. For a new item or index key version, the
+first payload ciphertext has `generation = 1`; later ciphertext revisions of
+that same object/key-version pair increment it by one. Envelope decoding only
+checks the nonzero uint64 range. Task 0004 owns checking that a received
+revision is the expected monotonic successor and rejecting stale, duplicate, or
+replayed account state.
 
 Version 1 implementations MUST reject any other format, suite, kind, flag bit,
 reserved value, unknown key material type, or malformed trailing data. A future
@@ -258,7 +307,11 @@ MUST define the executable JSON Schema validation step, a generator/verification
 separation, catalog completeness, fixture versioning, and the immutability rule
 before implementation accepts vectors as stable. It MUST add deterministic
 vectors for every kind and label, both root wrappers, root-wrapper revisions and
-rotation, one padded boundary for each payload kind, all documented parser
-failures, and password conversion (valid multi-byte/NUL input, invalid Unicode,
-normalization distinction, and byte-length limits). JSON parsing alone is not
-schema validation.
+authority/descendant compromise rotation, fixed kind-`0x03` internal-padding
+acceptance and rejection, one padded boundary for each payload kind, item/index
+generation zero and successor rejection, all documented parser failures, and
+password conversion (valid multi-byte/NUL input, invalid Unicode,
+normalization distinction, and byte-length limits). Invalid-Unicode vectors
+MUST use explicit UTF-16 code units or bytes with defined adapter semantics,
+never a lone surrogate embedded in JSON text. JSON parsing alone is not schema
+validation.

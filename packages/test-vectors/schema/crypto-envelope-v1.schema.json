@@ -1,104 +1,278 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neutron.example/schema/crypto-envelope-v1.schema.json",
-  "title": "Neutron immutable crypto envelope vector catalog v1",
-  "$comment": "This schema validates vector syntax. Cryptographic verification is performed only by a runtime adapter against the supplied expected values.",
+  "title": "Neutron executable crypto envelope vector catalog v1",
+  "$comment": "Only complete deterministic inputs and exact machine-verifiable results belong here. Coverage planning belongs in crypto-envelope-v1.pending.json.",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "catalogVersion", "cases"],
   "properties": {
     "format": { "const": "neutron-crypto-vectors/v1" },
     "catalogVersion": { "const": 1 },
-    "cases": {
-      "type": "array",
-      "minItems": 1,
-      "items": { "$ref": "#/$defs/case" }
-    }
+    "cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/case" } }
   },
   "$defs": {
-    "hex": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,79}$" },
+    "hex": { "type": "string", "pattern": "^(?:[0-9a-f]{2})*$" },
+    "nonEmptyHex": { "type": "string", "pattern": "^(?:[0-9a-f]{2})+$" },
+    "bytes16": { "type": "string", "pattern": "^(?:[0-9a-f]{2}){16}$" },
+    "bytes24": { "type": "string", "pattern": "^(?:[0-9a-f]{2}){24}$" },
+    "bytes32": { "type": "string", "pattern": "^(?:[0-9a-f]{2}){32}$" },
+    "bytes72": { "type": "string", "pattern": "^(?:[0-9a-f]{2}){72}$" },
+    "uint64": {
       "type": "string",
-      "pattern": "^(?:[0-9a-f]{2})*$"
+      "pattern": "^(?:0|[1-9][0-9]{0,18}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|18446744[0-6][0-9]{11}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|184467440737[0-8][0-9]{7}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]|1844674407370955161[0-5])$"
     },
-    "scalar": {
-      "anyOf": [{ "type": "boolean" }, { "type": "integer" }, { "type": "string" }]
-    },
-    "expect": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["outcome"],
-      "properties": {
-        "outcome": { "enum": ["success", "reject"] },
-        "output": { "$ref": "#/$defs/hex" },
-        "error": {
-          "enum": [
-            "authentication",
-            "bounds",
-            "invalid-password-encoding",
-            "kdf-policy",
-            "non-atomic-migration",
-            "padding",
-            "password-length",
-            "structure",
-            "unknown-critical-field",
-            "unsupported-suite",
-            "unsupported-version"
-          ]
-        },
-        "assertions": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,79}$" }
-        }
-      },
-      "allOf": [
-        {
-          "if": { "properties": { "outcome": { "const": "success" } } },
-          "then": {
-            "not": { "required": ["error"], "properties": { "error": {} } },
-            "anyOf": [
-              { "required": ["output"], "properties": { "output": {} } },
-              { "required": ["assertions"], "properties": { "assertions": {} } }
-            ]
-          }
-        },
-        {
-          "if": { "properties": { "outcome": { "const": "reject" } } },
-          "then": {
-            "not": { "required": ["output"], "properties": { "output": {} } },
-            "required": ["error"],
-            "properties": { "error": {} }
-          }
-        }
+    "error": {
+      "enum": [
+        "authentication",
+        "bounds",
+        "invalid-password-encoding",
+        "kdf-policy",
+        "non-atomic-migration",
+        "padding",
+        "password-length",
+        "structure",
+        "unknown-critical-field",
+        "unsupported-suite",
+        "unsupported-version"
       ]
     },
-    "case": {
+    "byteSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "output"],
+      "properties": { "outcome": { "const": "success" }, "output": { "$ref": "#/$defs/hex" } }
+    },
+    "stateSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "state"],
+      "properties": {
+        "outcome": { "const": "success" },
+        "state": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "generation": { "$ref": "#/$defs/uint64" },
+            "activeArkEpoch": { "$ref": "#/$defs/uint64" }
+          }
+        }
+      }
+    },
+    "rejection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "error"],
+      "properties": { "outcome": { "const": "reject" }, "error": { "$ref": "#/$defs/error" } }
+    },
+    "expect": {
+      "oneOf": [
+        { "$ref": "#/$defs/byteSuccess" },
+        { "$ref": "#/$defs/stateSuccess" },
+        { "$ref": "#/$defs/rejection" }
+      ]
+    },
+    "hkdf": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "operation", "input", "parameters", "expect"],
       "properties": {
-        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,79}$" },
-        "operation": {
-          "enum": [
-            "argon2id",
-            "envelope",
-            "hkdf-sha256",
-            "migration",
-            "password-encoding",
-            "state-generation"
-          ]
-        },
+        "id": { "$ref": "#/$defs/id" },
+        "operation": { "const": "hkdf-sha256" },
         "input": {
           "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/scalar" }
+          "additionalProperties": false,
+          "required": ["ikm", "salt", "info"],
+          "properties": {
+            "ikm": { "$ref": "#/$defs/nonEmptyHex" },
+            "salt": { "$ref": "#/$defs/hex" },
+            "info": { "$ref": "#/$defs/hex" }
+          }
         },
         "parameters": {
           "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/scalar" }
+          "additionalProperties": false,
+          "required": ["length"],
+          "properties": { "length": { "type": "integer", "minimum": 1, "maximum": 8160 } }
         },
-        "expect": { "$ref": "#/$defs/expect" }
+        "expect": { "$ref": "#/$defs/byteSuccess" }
       }
+    },
+    "argon2id": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "operation", "input", "parameters", "expect"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "operation": { "const": "argon2id" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["password", "salt"],
+          "properties": {
+            "password": { "$ref": "#/$defs/nonEmptyHex" },
+            "salt": { "$ref": "#/$defs/bytes16" }
+          }
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "memoryKiB", "iterations", "parallelism", "length", "provider"],
+          "properties": {
+            "version": { "const": 19 },
+            "memoryKiB": { "const": 65536 },
+            "iterations": { "const": 3 },
+            "parallelism": { "const": 1 },
+            "length": { "const": 32 },
+            "provider": { "const": "libsodium-crypto-pwhash-argon2id13" }
+          }
+        },
+        "expect": { "$ref": "#/$defs/byteSuccess" }
+      }
+    },
+    "passwordUtf8": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "operation", "input", "parameters", "expect"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "operation": { "const": "password-encoding" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["utf8"],
+          "properties": { "utf8": { "$ref": "#/$defs/hex" } }
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["encoding", "normalization"],
+          "properties": { "encoding": { "const": "utf8" }, "normalization": { "const": "none" } }
+        },
+        "expect": { "oneOf": [{ "$ref": "#/$defs/byteSuccess" }, { "$ref": "#/$defs/rejection" }] }
+      }
+    },
+    "passwordUtf16Be": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "operation", "input", "parameters", "expect"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "operation": { "const": "password-encoding" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["utf16be"],
+          "properties": { "utf16be": { "$ref": "#/$defs/nonEmptyHex" } }
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["encoding", "adapter"],
+          "properties": {
+            "encoding": { "const": "utf16be" },
+            "adapter": { "const": "reject-unpaired-surrogates" }
+          }
+        },
+        "expect": { "$ref": "#/$defs/rejection" }
+      }
+    },
+    "envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "operation", "input", "parameters", "expect"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "operation": { "const": "envelope" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["envelope", "header", "key", "nonce", "salt"],
+          "properties": {
+            "envelope": { "$ref": "#/$defs/nonEmptyHex" },
+            "header": { "$ref": "#/$defs/bytes72" },
+            "key": { "$ref": "#/$defs/bytes32" },
+            "nonce": { "$ref": "#/$defs/bytes24" },
+            "salt": {
+              "oneOf": [{ "const": "" }, { "$ref": "#/$defs/bytes16" }]
+            }
+          }
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["accountId", "objectId"],
+          "properties": {
+            "accountId": { "$ref": "#/$defs/bytes16" },
+            "objectId": { "$ref": "#/$defs/bytes16" }
+          }
+        },
+        "expect": { "oneOf": [{ "$ref": "#/$defs/byteSuccess" }, { "$ref": "#/$defs/rejection" }] }
+      }
+    },
+    "stateGeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "operation", "input", "parameters", "expect"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "operation": { "const": "state-generation" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "generation"],
+          "properties": {
+            "kind": { "type": "integer", "minimum": 1, "maximum": 255 },
+            "generation": { "$ref": "#/$defs/uint64" }
+          }
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["previousGeneration"],
+          "properties": { "previousGeneration": { "$ref": "#/$defs/uint64" } }
+        },
+        "expect": { "oneOf": [{ "$ref": "#/$defs/stateSuccess" }, { "$ref": "#/$defs/rejection" }] }
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "operation", "input", "parameters", "expect"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "operation": { "const": "migration" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["oldState", "oldArk", "newArk"],
+          "properties": {
+            "oldState": { "$ref": "#/$defs/nonEmptyHex" },
+            "oldArk": { "$ref": "#/$defs/bytes32" },
+            "newArk": { "$ref": "#/$defs/bytes32" }
+          }
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["newArkEpoch"],
+          "properties": { "newArkEpoch": { "$ref": "#/$defs/uint64" } }
+        },
+        "expect": { "oneOf": [{ "$ref": "#/$defs/stateSuccess" }, { "$ref": "#/$defs/rejection" }] }
+      }
+    },
+    "case": {
+      "oneOf": [
+        { "$ref": "#/$defs/hkdf" },
+        { "$ref": "#/$defs/argon2id" },
+        { "$ref": "#/$defs/passwordUtf8" },
+        { "$ref": "#/$defs/passwordUtf16Be" },
+        { "$ref": "#/$defs/envelope" },
+        { "$ref": "#/$defs/stateGeneration" },
+        { "$ref": "#/$defs/migration" }
+      ]
     }
   }
 }

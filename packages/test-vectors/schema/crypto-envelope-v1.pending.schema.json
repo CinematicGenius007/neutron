@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neutron.example/schema/crypto-envelope-v1.pending.schema.json",
+  "title": "Neutron pending crypto-envelope coverage requirements v1",
+  "$comment": "Planning records only. This manifest deliberately has no executable expectation field and must never be supplied to verifyCatalog.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "manifestVersion", "requirements"],
+  "properties": {
+    "format": { "const": "neutron-crypto-vector-requirements/v1" },
+    "manifestVersion": { "const": 1 },
+    "requirements": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/requirement" } }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,79}$" },
+    "operation": {
+      "enum": [
+        "argon2id",
+        "envelope",
+        "hkdf-sha256",
+        "migration",
+        "password-encoding",
+        "state-generation"
+      ]
+    },
+    "textList": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+    },
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "operation",
+        "references",
+        "requiredInput",
+        "requiredExpectedResult",
+        "reasonNotExecutable",
+        "status"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "operation": { "$ref": "#/$defs/operation" },
+        "references": { "$ref": "#/$defs/textList" },
+        "requiredInput": { "$ref": "#/$defs/textList" },
+        "requiredExpectedResult": { "$ref": "#/$defs/textList" },
+        "reasonNotExecutable": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "status": { "const": "pending" }
+      }
+    }
+  }
+}

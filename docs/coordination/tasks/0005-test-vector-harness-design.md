@@ -91,6 +91,18 @@ persisted cryptographic operation and parser boundary.
   omitted those defects. This pass is limited to strict boundary/schema honesty
   and coordination records; it will not generate the full vector set or configure
   browser execution.
+- 2026-07-26T16:55:00Z — Audited all 42 candidate entries against the stated
+  executable definition. Six are executable: HKDF-SHA-256 (one success),
+  Argon2id (one success), and password encoding (two successes, two rejections).
+  The other 36 are separate pending requirements: password encoding (one success,
+  one rejection), envelope (nine successes, 14 rejections), state-generation
+  (two successes, three rejections), and migration (two successes, four
+  rejections). The executable catalog has strict operation-discriminated
+  branches and exact byte/state/rejection result unions; the pending manifest has
+  no executable `expect` form. Its digest covers the six executable candidates
+  only. The prior module-private WeakSet boundary was retained unchanged. This
+  task remains blocked on concrete reviewed envelope/migration material and
+  real-browser execution.
 
 ## Handoff
 
@@ -142,12 +154,27 @@ tests cover both JavaScript-level forgeries. This does not resolve the remaining
 strict operation-schema, executable-versus-pending-manifest, or browser-execution
 work; all are blockers before concrete catalog generation may proceed.
 
-Blocker: strict operation-discriminated schemas and an executable-only catalog
-must first separate the pending scenario requirements from concrete verified
-vectors. Then the pending requirements must become exact reviewed envelope bytes,
-and a real-browser runner must execute the committed catalog. This is not a
-Stage 1 production-provider dependency: `packages/test-vectors/src/reference-
-generator.ts` provides test-only primitive machinery.
+2026-07-26T16:55:00Z — `pnpm install --frozen-lockfile`, `pnpm test` (one file,
+eight tests), `pnpm --filter @neutron/test-vectors test:generate` (one generator
+test; anchored HKDF, Argon2id, and XChaCha values unchanged), `pnpm typecheck`,
+`pnpm lint`, `pnpm format:check`, `pnpm build`, and `git diff --check` each
+exited 0. Schema adversarial tests reject input/expect aliases; input `outcome`,
+`output`, `error`, and `expect` fields; HKDF `banana`/`potato` fields;
+odd/uppercase hex; wrong Argon2 salt length; empty envelope input; wrong envelope
+key/nonce/salt/header/account-ID lengths; unknown operation fields; success without output,
+success-plus-error, rejection-plus-output, and unsafe uint64 JSON numbers.
+They also prove invalid catalogs never invoke an adapter; duplicate executable
+IDs fail at loading; source and request mutation are ineffective; and forged,
+spread, structured-cloned, prototype-derived, and second-module wrappers fail
+before adapter invocation. Browser execution remains unconfigured and is not
+claimed.
+
+Blocker: the schema/catalog split is complete, but pending requirements must
+become exact reviewed envelope and migration bytes (or reviewed base-vector plus
+mutation recipes), and a real-browser runner must execute the committed
+executable catalog. This is not a Stage 1 production-provider dependency:
+`packages/test-vectors/src/reference-generator.ts` provides test-only primitive
+machinery.
 
 ## Review
 
@@ -160,3 +187,10 @@ vector coverage and browser execution are complete.
 and 1 P2: schema-valid expectation aliasing, a forgeable runtime brand,
 assertion-only executable successes, and an incomplete blocker record. The
 runtime-brand issue is remediated; the remaining boundary findings are open.
+
+2026-07-26T16:44:08Z — PASS — bounded independent runtime-boundary review of
+commit `f371ddc` found 0 P0, 0 P1, and 0 P2. It confirmed the WeakSet registry
+rejects plain/spread forgeries, structured clones, prototype wrappers, and
+second-module wrappers before adapter invocation, and confirmed freeze/copy
+behavior. This review did not approve the still-pending schema/catalog split or
+browser execution.

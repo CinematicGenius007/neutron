@@ -1,0 +1,388 @@
+{
+  "format": "neutron-crypto-vector-requirements/v1",
+  "manifestVersion": 1,
+  "requirements": [
+    {
+      "id": "password-accept-1024-utf8-bytes",
+      "operation": "password-encoding",
+      "references": ["crypto-envelope.md §1", "ADR 0010 Security and privacy consequences"],
+      "requiredInput": ["exact 1,024-byte UTF-8 input"],
+      "requiredExpectedResult": ["exact encoded output"],
+      "reasonNotExecutable": "The candidate describes repetition rather than supplying the input bytes and output.",
+      "status": "pending"
+    },
+    {
+      "id": "password-reject-1025-utf8-bytes",
+      "operation": "password-encoding",
+      "references": ["crypto-envelope.md §1", "crypto-envelope.md §12"],
+      "requiredInput": ["exact 1,025-byte UTF-8 input"],
+      "requiredExpectedResult": ["password-length rejection"],
+      "reasonNotExecutable": "The candidate describes repetition instead of concrete input bytes.",
+      "status": "pending"
+    },
+    {
+      "id": "envelope-password-root-wrapper",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md §2", "crypto-envelope.md Table 1"],
+      "requiredInput": [
+        "complete envelope bytes",
+        "password bytes and Argon2id salt",
+        "deterministic nonce and ARK plaintext"
+      ],
+      "requiredExpectedResult": ["exact ciphertext envelope bytes", "exact decrypted ARK bytes"],
+      "reasonNotExecutable": "No envelope, key, salt, nonce, or expected bytes are supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "envelope-recovery-root-wrapper",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md §2", "crypto-envelope.md §5"],
+      "requiredInput": [
+        "complete envelope bytes",
+        "recovery secret and account ID",
+        "deterministic nonce and ARK plaintext"
+      ],
+      "requiredExpectedResult": ["exact ciphertext envelope bytes", "exact decrypted ARK bytes"],
+      "reasonNotExecutable": "No concrete recovery-wrapper material or expected bytes are supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "envelope-ark-mutation-child-fixed-padding",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md Table 1", "crypto-envelope.md §8"],
+      "requiredInput": [
+        "complete kind-0x03 envelope",
+        "ARK and inner mutation-key bytes",
+        "deterministic nonce and canonical padding"
+      ],
+      "requiredExpectedResult": ["exact 147-byte ciphertext", "exact unwrapped material"],
+      "reasonNotExecutable": "The fixed-size assertion lacks all deterministic bytes.",
+      "status": "pending"
+    },
+    {
+      "id": "envelope-ark-vault-child-fixed-padding",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md Table 1", "crypto-envelope.md §8"],
+      "requiredInput": [
+        "complete kind-0x03 envelope",
+        "ARK and vault-key bytes",
+        "deterministic nonce and canonical padding"
+      ],
+      "requiredExpectedResult": ["exact 147-byte ciphertext", "exact unwrapped material"],
+      "reasonNotExecutable": "The fixed-size assertion lacks all deterministic bytes.",
+      "status": "pending"
+    },
+    {
+      "id": "envelope-vault-item-wrapper",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md Table 1", "crypto-envelope.md §5"],
+      "requiredInput": [
+        "complete kind-0x04 envelope",
+        "vault key and item key",
+        "deterministic nonce"
+      ],
+      "requiredExpectedResult": ["exact envelope bytes", "exact unwrapped item key"],
+      "reasonNotExecutable": "Only kind and label metadata are supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "envelope-item-attachment-wrapper",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md Table 1", "crypto-envelope.md §5"],
+      "requiredInput": [
+        "complete kind-0x05 envelope",
+        "item key and attachment key",
+        "deterministic nonce"
+      ],
+      "requiredExpectedResult": ["exact envelope bytes", "exact unwrapped attachment key"],
+      "reasonNotExecutable": "Only kind and label metadata are supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "envelope-item-payload-canonical-padding",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md Table 1", "crypto-envelope.md §7"],
+      "requiredInput": [
+        "complete item envelope",
+        "payload key, nonce, and plaintext boundary bytes"
+      ],
+      "requiredExpectedResult": ["exact padded ciphertext", "exact decrypted payload"],
+      "reasonNotExecutable": "The claimed length boundary has no concrete envelope or bytes.",
+      "status": "pending"
+    },
+    {
+      "id": "envelope-blob-payload-canonical-padding",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md Table 1", "crypto-envelope.md §7"],
+      "requiredInput": [
+        "complete blob envelope",
+        "payload key, nonce, and plaintext boundary bytes"
+      ],
+      "requiredExpectedResult": ["exact padded ciphertext", "exact decrypted payload"],
+      "reasonNotExecutable": "The claimed length boundary has no concrete envelope or bytes.",
+      "status": "pending"
+    },
+    {
+      "id": "envelope-index-payload-canonical-padding",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md Table 1", "crypto-envelope.md §7"],
+      "requiredInput": [
+        "complete index envelope",
+        "payload key, nonce, and plaintext boundary bytes"
+      ],
+      "requiredExpectedResult": ["exact padded ciphertext", "exact decrypted payload"],
+      "reasonNotExecutable": "The claimed length boundary has no concrete envelope or bytes.",
+      "status": "pending"
+    },
+    {
+      "id": "reject-unknown-envelope-version",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md §2", "crypto-envelope.md §11"],
+      "requiredInput": ["valid base envelope bytes", "exact version-byte mutation"],
+      "requiredExpectedResult": ["unsupported-version rejection"],
+      "reasonNotExecutable": "No base envelope or mutation offset is supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "reject-unknown-envelope-suite",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md §1", "crypto-envelope.md §11"],
+      "requiredInput": ["valid base envelope bytes", "exact suite-byte mutation"],
+      "requiredExpectedResult": ["unsupported-suite rejection"],
+      "reasonNotExecutable": "No base envelope or mutation offset is supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "reject-wrong-envelope-kind",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md Table 1", "crypto-envelope.md §11"],
+      "requiredInput": ["valid base envelope bytes", "exact kind-byte mutation"],
+      "requiredExpectedResult": ["unknown-critical-field rejection"],
+      "reasonNotExecutable": "No base envelope or mutation offset is supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "reject-flags-and-reserved-fields",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md §2", "crypto-envelope.md §11"],
+      "requiredInput": [
+        "valid base envelope bytes",
+        "one exact flags or reserved-byte mutation per vector"
+      ],
+      "requiredExpectedResult": ["unknown-critical-field rejection"],
+      "reasonNotExecutable": "Several mutations are conflated and none has a concrete base envelope.",
+      "status": "pending"
+    },
+    {
+      "id": "reject-wrong-argon2id-policy",
+      "operation": "envelope",
+      "references": ["ADR 0010 Decision", "crypto-envelope.md §11"],
+      "requiredInput": ["complete password wrapper", "exact KDF header mutation"],
+      "requiredExpectedResult": ["kdf-policy rejection before KDF"],
+      "reasonNotExecutable": "No authenticated envelope bytes or one exact mutation are supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "reject-ark-child-nonzero-padding",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md §8", "crypto-envelope.md §11"],
+      "requiredInput": [
+        "valid kind-0x03 envelope",
+        "ARK",
+        "exact encrypted-inner-padding mutation recipe"
+      ],
+      "requiredExpectedResult": ["padding rejection"],
+      "reasonNotExecutable": "No decryptable base vector or exact mutation is supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "reject-payload-missing-padding-marker",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md §7", "crypto-envelope.md §11"],
+      "requiredInput": [
+        "valid payload envelope",
+        "payload key",
+        "exact padding-marker mutation recipe"
+      ],
+      "requiredExpectedResult": ["padding rejection"],
+      "reasonNotExecutable": "No decryptable base vector or mutation bytes are supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "reject-wrong-key-authentication",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md §3", "crypto-envelope.md §11"],
+      "requiredInput": ["valid envelope bytes", "exact wrong key bytes"],
+      "requiredExpectedResult": ["authentication rejection"],
+      "reasonNotExecutable": "No envelope or wrong-key bytes are supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "reject-wrong-aad-authentication",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md §3", "crypto-envelope.md §11"],
+      "requiredInput": ["valid envelope bytes", "exact authenticated-header substitution"],
+      "requiredExpectedResult": ["authentication rejection"],
+      "reasonNotExecutable": "No envelope or exact AAD mutation is supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "reject-mutated-ciphertext-authentication",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md §3", "crypto-envelope.md §11"],
+      "requiredInput": ["valid envelope bytes", "exact ciphertext byte offset and replacement"],
+      "requiredExpectedResult": ["authentication rejection"],
+      "reasonNotExecutable": "No base ciphertext bytes are supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "reject-truncated-envelope",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md §2", "crypto-envelope.md §11"],
+      "requiredInput": ["valid envelope bytes", "exact truncation length"],
+      "requiredExpectedResult": ["structure rejection"],
+      "reasonNotExecutable": "No base envelope is supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "reject-extended-envelope",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md §2", "crypto-envelope.md §11"],
+      "requiredInput": ["valid envelope bytes", "exact appended bytes"],
+      "requiredExpectedResult": ["structure rejection"],
+      "reasonNotExecutable": "No base envelope or appended bytes are supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "reject-malformed-ciphertext-length",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md §2", "crypto-envelope.md §11"],
+      "requiredInput": ["valid envelope bytes", "exact header length mutation"],
+      "requiredExpectedResult": ["structure rejection"],
+      "reasonNotExecutable": "No base envelope and no header bytes are supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "reject-oversized-envelope",
+      "operation": "envelope",
+      "references": ["crypto-envelope.md §2", "crypto-envelope.md §11"],
+      "requiredInput": ["exact header-only oversized input"],
+      "requiredExpectedResult": ["bounds rejection before allocation"],
+      "reasonNotExecutable": "The candidate does not supply a complete syntactic header.",
+      "status": "pending"
+    },
+    {
+      "id": "generation-root-initial",
+      "operation": "state-generation",
+      "references": ["crypto-envelope.md §1", "crypto-envelope.md §11"],
+      "requiredInput": ["canonical root-wrapper state bytes"],
+      "requiredExpectedResult": ["exact accepted canonical state"],
+      "reasonNotExecutable": "Only a kind and scalar generation are supplied; no state representation exists.",
+      "status": "pending"
+    },
+    {
+      "id": "generation-item-initial-and-incremented",
+      "operation": "state-generation",
+      "references": ["crypto-envelope.md §1", "crypto-envelope.md §11"],
+      "requiredInput": ["canonical prior and successor payload states"],
+      "requiredExpectedResult": ["exact accepted successor state"],
+      "reasonNotExecutable": "Only two numbers and textual assertions are supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "generation-reject-zero-item-index",
+      "operation": "state-generation",
+      "references": ["crypto-envelope.md §1", "crypto-envelope.md §11"],
+      "requiredInput": ["canonical item and index states with zero generation"],
+      "requiredExpectedResult": ["bounds rejection"],
+      "reasonNotExecutable": "The candidate combines kinds and lacks canonical state bytes.",
+      "status": "pending"
+    },
+    {
+      "id": "generation-reject-stale-account-state",
+      "operation": "state-generation",
+      "references": ["crypto-envelope.md §1", "crypto-envelope.md §11"],
+      "requiredInput": ["Task 0004 authenticated prior and candidate states"],
+      "requiredExpectedResult": ["exact stale-state rejection"],
+      "reasonNotExecutable": "Task 0004 has not defined the authenticated state format.",
+      "status": "pending"
+    },
+    {
+      "id": "generation-reject-uint64-overflow",
+      "operation": "state-generation",
+      "references": ["crypto-envelope.md §1", "crypto-envelope.md §11"],
+      "requiredInput": ["canonical uint64 maximum state and increment operation"],
+      "requiredExpectedResult": ["bounds rejection"],
+      "reasonNotExecutable": "No operation/state encoding is supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "migration-minimum-ark-rewrap-success",
+      "operation": "migration",
+      "references": ["ADR 0010 Decision", "crypto-envelope.md §10"],
+      "requiredInput": [
+        "complete old state",
+        "old and new ARKs",
+        "all live child envelopes",
+        "deterministic successor nonces"
+      ],
+      "requiredExpectedResult": ["exact atomic successor state"],
+      "reasonNotExecutable": "The candidate uses synthetic names and counts instead of state and envelope bytes.",
+      "status": "pending"
+    },
+    {
+      "id": "migration-reject-missing-child",
+      "operation": "migration",
+      "references": ["crypto-envelope.md §10", "crypto-envelope.md §11"],
+      "requiredInput": [
+        "complete old state",
+        "declared live-child set",
+        "incomplete successor state"
+      ],
+      "requiredExpectedResult": ["non-atomic-migration rejection"],
+      "reasonNotExecutable": "Counts do not identify a concrete child set or state.",
+      "status": "pending"
+    },
+    {
+      "id": "migration-reject-malformed-child",
+      "operation": "migration",
+      "references": ["crypto-envelope.md §8", "crypto-envelope.md §10"],
+      "requiredInput": ["complete old state", "malformed child envelope bytes", "old ARK"],
+      "requiredExpectedResult": ["padding rejection"],
+      "reasonNotExecutable": "No child envelope or ARK is supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "migration-reject-wrong-old-ark",
+      "operation": "migration",
+      "references": ["crypto-envelope.md §10", "crypto-envelope.md §11"],
+      "requiredInput": ["complete old state", "exact incorrect old ARK", "child envelope bytes"],
+      "requiredExpectedResult": ["authentication rejection"],
+      "reasonNotExecutable": "No state, envelope, or key bytes are supplied.",
+      "status": "pending"
+    },
+    {
+      "id": "migration-reject-partial-successor",
+      "operation": "migration",
+      "references": ["crypto-envelope.md §10", "ADR 0010 Security and privacy consequences"],
+      "requiredInput": ["complete old state", "partial successor root and child state"],
+      "requiredExpectedResult": ["non-atomic-migration rejection"],
+      "reasonNotExecutable": "The candidate provides counts but no canonical successor state.",
+      "status": "pending"
+    },
+    {
+      "id": "migration-full-rotation-is-distinct",
+      "operation": "migration",
+      "references": ["ADR 0010 Decision", "crypto-envelope.md Key lifecycle and metadata impact"],
+      "requiredInput": [
+        "complete old state",
+        "new descendant keys",
+        "new signing binding",
+        "re-encrypted payloads"
+      ],
+      "requiredExpectedResult": ["exact accepted full-rotation successor state"],
+      "reasonNotExecutable": "Only textual assertions identify the distinct operation.",
+      "status": "pending"
+    }
+  ]
+}

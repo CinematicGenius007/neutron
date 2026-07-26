@@ -9,6 +9,8 @@
     "@neutron/protocol": "workspace:*"
   },
   "devDependencies": {
+    "@noble/ciphers": "2.2.0",
+    "@noble/hashes": "2.2.0",
     "ajv": "8.17.1"
   }
 }

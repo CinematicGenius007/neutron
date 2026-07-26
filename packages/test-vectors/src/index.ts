@@ -26,12 +26,15 @@ export interface VectorExpectation {
   readonly output?: string;
 }
 
-export interface VectorCase {
-  readonly expect: VectorExpectation;
+export interface VectorRequest {
   readonly id: string;
   readonly input: Readonly<Record<string, boolean | number | string>>;
   readonly operation: VectorOperation;
   readonly parameters: Readonly<Record<string, boolean | number | string>>;
+}
+
+export interface VectorCase extends VectorRequest {
+  readonly expect: VectorExpectation;
 }
 
 export interface VectorCatalog {
@@ -47,12 +50,8 @@ export interface VectorObservation {
   readonly output?: string;
 }
 
-/**
- * Implementations supply this adapter. It intentionally has no generator API:
- * expected values come only from the immutable catalog, never from a verifier.
- */
 export interface VectorVerifier {
-  verify(vector: VectorCase): Promise<VectorObservation> | VectorObservation;
+  verify(request: VectorRequest): Promise<unknown> | unknown;
 }
 
 export interface VerificationResult {
@@ -61,30 +60,79 @@ export interface VerificationResult {
   readonly reason?: string;
 }
 
+export interface CatalogValidator {
+  (candidate: unknown): boolean;
+  errors?: unknown;
+}
+
+export function loadValidatedCatalog(
+  candidate: unknown,
+  validate: CatalogValidator,
+): VectorCatalog {
+  if (!validate(candidate))
+    throw new Error(`invalid vector catalog: ${JSON.stringify(validate.errors)}`);
+  const catalog = candidate as VectorCatalog;
+  const ids = new Set<string>();
+  for (const vector of catalog.cases) {
+    if (ids.has(vector.id)) throw new Error(`duplicate vector id: ${vector.id}`);
+    ids.add(vector.id);
+  }
+  return catalog;
+}
+
+const hex = /^(?:[0-9a-f]{2})*$/;
+const assertion = /^[a-z0-9][a-z0-9-]{2,79}$/;
+
+function isObservation(value: unknown): value is VectorObservation {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  const keys = Object.keys(candidate);
+  if (keys.some((key) => !["assertions", "error", "outcome", "output"].includes(key))) return false;
+  if (candidate.outcome !== "success" && candidate.outcome !== "reject") return false;
+  if (
+    candidate.outcome === "success" &&
+    (typeof candidate.output !== "string" || candidate.error !== undefined)
+  )
+    return false;
+  if (
+    candidate.outcome === "reject" &&
+    (typeof candidate.error !== "string" || candidate.output !== undefined)
+  )
+    return false;
+  const output = candidate.output;
+  if (output !== undefined && (typeof output !== "string" || !hex.test(output))) return false;
+  if (
+    candidate.assertions !== undefined &&
+    (!Array.isArray(candidate.assertions) ||
+      candidate.assertions.some((item) => typeof item !== "string" || !assertion.test(item)) ||
+      new Set(candidate.assertions).size !== candidate.assertions.length)
+  )
+    return false;
+  return true;
+}
+
 function sameAssertions(
   expected: readonly string[] | undefined,
   observed: readonly string[] | undefined,
 ): boolean {
-  return (
-    [...(expected ?? [])].sort().join("\u0000") === [...(observed ?? [])].sort().join("\u0000")
-  );
+  if ((expected?.length ?? 0) !== (observed?.length ?? 0)) return false;
+  return (expected ?? []).every((item, index) => item === observed?.[index]);
 }
 
-function compare(vector: VectorCase, observed: VectorObservation): VerificationResult {
-  const expected = vector.expect;
-  if (expected.outcome !== observed.outcome) {
-    return { id: vector.id, passed: false, reason: "outcome" };
-  }
-  if (expected.error !== observed.error) {
-    return { id: vector.id, passed: false, reason: "error" };
-  }
-  if (expected.output !== observed.output) {
-    return { id: vector.id, passed: false, reason: "output" };
-  }
-  if (!sameAssertions(expected.assertions, observed.assertions)) {
+function compare(vector: VectorCase, value: unknown): VerificationResult {
+  if (!isObservation(value)) return { id: vector.id, passed: false, reason: "invalid-observation" };
+  const { expect } = vector;
+  if (expect.outcome !== value.outcome) return { id: vector.id, passed: false, reason: "outcome" };
+  if (expect.error !== value.error) return { id: vector.id, passed: false, reason: "error" };
+  if (expect.output !== value.output) return { id: vector.id, passed: false, reason: "output" };
+  if (!sameAssertions(expect.assertions, value.assertions))
     return { id: vector.id, passed: false, reason: "assertions" };
-  }
   return { id: vector.id, passed: true };
+}
+
+function requestOf(vector: VectorCase): VectorRequest {
+  const { expect: _expect, ...request } = vector;
+  return request;
 }
 
 export async function verifyCatalog(
@@ -92,6 +140,6 @@ export async function verifyCatalog(
   verifier: VectorVerifier,
 ): Promise<readonly VerificationResult[]> {
   return Promise.all(
-    catalog.cases.map(async (vector) => compare(vector, await verifier.verify(vector))),
+    catalog.cases.map(async (vector) => compare(vector, await verifier.verify(requestOf(vector)))),
   );
 }

@@ -25,6 +25,8 @@ persisted cryptographic operation and parser boundary.
 - `packages/test-vectors/package.json` and `pnpm-lock.yaml` only if a
   test-harness JSON Schema validator is required; no production dependency may
   be added.
+- `packages/test-vectors/package.json` and `pnpm-lock.yaml` for the reviewed,
+  test-only reference generator dependency required by remediation.
 
 ## Out of scope
 
@@ -32,8 +34,8 @@ persisted cryptographic operation and parser boundary.
 
 ## Acceptance criteria
 
-- [ ] Browser and Node harnesses consume the same immutable vectors. Runtime-neutral
-      adapters and the immutable catalog exist, but browser execution is blocked.
+- [ ] Browser and Node harnesses consume the same immutable vectors. The catalog
+      remains a candidate pending concrete-vector completion and browser execution.
 - [x] Wrong key/AAD/version, mutation, truncation, extension, and oversized cases
       are represented.
 - [x] Fixtures are synthetic and contain no operational secrets.
@@ -58,17 +60,33 @@ persisted cryptographic operation and parser boundary.
   failures; zero/initial/incremented/stale/overflow generations; and six
   minimum-ARK-migration/full-rotation cases. No product crypto provider,
   account-state transaction, or server behavior was implemented.
+- 2026-07-26T15:26:49Z — Remediation claim granted to `/root` in the shared
+  worktree after independent reviewer `task_0005_reviewer` returned FAIL: no P0
+  findings and four P1 findings. The prior scaffold allowed expectation echoing,
+  had unsafe assertion comparison, used an underconstrained schema, and supplied
+  scenario metadata rather than deterministic concrete vectors. The candidate
+  catalog must not be described as immutable until it is complete and passes a
+  new independent review. Exact test-only generator dependency paths are now
+  reserved above; no production provider will be added.
+- 2026-07-26T15:30:50Z — Remediated the runner trust boundary: adapters receive
+  only `VectorRequest` (never `expect`), observations are runtime-validated,
+  assertion comparison is length-and-element exact, and malformed/duplicate
+  observations fail. Added semantic duplicate-ID validation and schema branches
+  that make success/error and rejection/output mutually exclusive. Added a
+  separate test-only Noble reference generator for deterministic XChaCha20-
+  Poly1305, HKDF-SHA-256, and Argon2id candidate generation. The existing 42
+  cases are still not a complete concrete catalog, so the digest remains a
+  candidate-only integrity check and the task is blocked.
 
 ## Handoff
 
-An independent security reviewer should first verify that the catalog's labels,
-kind bounds, rejection codes, and migration assertions exactly match ADR 0010
-and `docs/protocol/crypto-envelope.md`; in particular, try to find a boundary
-that is represented only by an assertion rather than an exact supplied
-cryptographic input/output. Then review the digest/version policy and verify
-that `VectorVerifier` cannot generate or overwrite expected values. Browser and
-provider execution remain blocked, so do not treat the representation tests as
-cryptographic interoperability evidence.
+An independent reviewer should verify adapters cannot access expected values,
+including through object aliases; malformed observations and duplicate IDs fail;
+and `['a', 'b']` never compares equal to `['a\\u0000b']`. The next implementer
+must use the separate Noble generator to replace every scenario-only entry with
+concrete reviewed envelope bytes or base-vector-plus-mutation recipes before
+regenerating the catalog digest. Do not accept current representation tests as
+interoperability evidence.
 
 ## Verification
 
@@ -86,13 +104,27 @@ both runtimes once those dependencies exist.
 `pnpm lint`, `pnpm format:check`, `pnpm test`, and `pnpm build` each exited 0.
 `pnpm test` executed the five new Node tests. `git diff --check` exited 0.
 
+2026-07-26T15:31:57Z — Remediation verification: `pnpm install
+--frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm
+test`, `pnpm build`, and `git diff --check` each exited 0. Node executed one
+test file with seven tests. Browser execution was not attempted: this workspace
+has no configured real-browser runner. The candidate catalog remains 42 cases
+(24 rejections), of which only the two primitive known answers plus the new
+synthetic XChaCha generator smoke output are concrete cryptographic outputs;
+the remaining scenario entries require reviewed generator output before the
+catalog can be frozen.
+
 Blocker: exhaustive positive/negative primitive and envelope verification cannot
-execute without the Stage 1 production crypto provider, and a browser claim
-would be false without a real browser runner. A successor implementation task
-must add independently observed deterministic provider outputs to this catalog's
-adapter execution, run it in Node and a real browser, and arrange independent
-security review before changing this task to `review`.
+be completed until the candidate catalog is expanded into exact reviewed
+envelope/vector bytes and a real-browser runner is available. This is not a
+Stage 1 production-provider dependency: `packages/test-vectors/src/reference-
+generator.ts` provides the test-only primitive machinery. The smallest next step
+is to generate and review concrete fixture candidates, then run the unchanged
+catalog in Node and a real browser before requesting independent review.
 
 ## Review
 
-Pending; independent security review required.
+2026-07-26T15:26:49Z — FAIL — `task_0005_reviewer` found no P0 and four P1
+findings: expectation echoing, scenario-only vectors, an underconstrained schema,
+and NUL-delimited assertion comparison. Remediation is incomplete until concrete
+vector coverage and browser execution are complete.

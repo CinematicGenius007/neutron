@@ -7,11 +7,13 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
 
 import {
+  loadValidatedCatalog,
   type VectorCatalog,
   type VectorObservation,
   type VectorVerifier,
   verifyCatalog,
 } from "../src/index.js";
+import { generateSyntheticXChaChaCandidate } from "../src/reference-generator.js";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const fixturePath = join(packageRoot, "fixtures/crypto-envelope-v1.json");
@@ -23,10 +25,22 @@ async function loadJson(path: string): Promise<unknown> {
 }
 
 async function loadCatalog(): Promise<VectorCatalog> {
-  return (await loadJson(fixturePath)) as VectorCatalog;
+  const [schema, candidate] = await Promise.all([loadJson(schemaPath), loadJson(fixturePath)]);
+  const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
+  return loadValidatedCatalog(candidate, validate);
 }
 
 describe("crypto-envelope v1 catalog", () => {
+  it("keeps the test-only reference generator outside normal verification", () => {
+    expect(
+      generateSyntheticXChaChaCandidate({
+        aad: "00",
+        key: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        nonce: "000102030405060708090a0b0c0d0e0f1011121314151617",
+        plaintext: "0102",
+      }),
+    ).toEqual({ decrypted: "0102", ciphertext: expect.stringMatching(/^[0-9a-f]{36}$/) });
+  });
   it("is validated by a real Draft 2020-12 JSON Schema validator", async () => {
     const [schema, rawCatalog] = await Promise.all([loadJson(schemaPath), loadJson(fixturePath)]);
     const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
@@ -40,6 +54,12 @@ describe("crypto-envelope v1 catalog", () => {
     }
     firstMalformedCase.expect = { outcome: "reject" };
     expect(validate(malformed)).toBe(false);
+
+    const duplicate = structuredClone(rawCatalog) as { cases: unknown[] };
+    const duplicateCase = duplicate.cases[0];
+    if (duplicateCase === undefined) throw new Error("fixture has no cases");
+    duplicate.cases.push(duplicateCase);
+    expect(() => loadValidatedCatalog(duplicate, validate)).toThrow("duplicate vector id");
   });
 
   it("matches the recorded immutable catalog digest", async () => {
@@ -150,6 +170,41 @@ describe("crypto-envelope v1 catalog", () => {
 
     await expect(verifyCatalog(selected, verifier)).resolves.toEqual([
       { id: "rfc5869-sha256-case-1", passed: false, reason: "output" },
+    ]);
+  });
+
+  it("never passes expectations to an adapter and rejects malformed observations", async () => {
+    const catalog = await loadCatalog();
+    const firstCase = catalog.cases[0];
+    if (firstCase === undefined) throw new Error("fixture has no cases");
+    const selected: VectorCatalog = { ...catalog, cases: [firstCase] };
+    const echoingVerifier: VectorVerifier = {
+      verify(request) {
+        expect("expect" in request).toBe(false);
+        return { outcome: "success", output: "00", error: "authentication" };
+      },
+    };
+    const nulCollisionVerifier: VectorVerifier = {
+      verify: () => ({
+        outcome: "success",
+        output: firstCase.expect.output,
+        assertions: ["a\u0000b"],
+      }),
+    };
+    const withAssertions: VectorCatalog = {
+      ...selected,
+      cases: [
+        {
+          ...firstCase,
+          expect: { outcome: "success", output: firstCase.expect.output, assertions: ["a", "b"] },
+        },
+      ],
+    };
+    await expect(verifyCatalog(selected, echoingVerifier)).resolves.toEqual([
+      { id: firstCase.id, passed: false, reason: "invalid-observation" },
+    ]);
+    await expect(verifyCatalog(withAssertions, nulCollisionVerifier)).resolves.toEqual([
+      { id: firstCase.id, passed: false, reason: "invalid-observation" },
     ]);
   });
 });

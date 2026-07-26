@@ -1,11 +1,11 @@
 # TASK 0003 — Cryptographic envelope specification
 
-Status: review
+Status: done
 Owner: unassigned
 Claimed: —
 Worktree/branch: main (pre-remediation 7734cb6; baseline 1834f95)
-Reviewer: unassigned  
-Review claimed: —  
+Reviewer: Hegel (`task_0003_final_reviewer`)
+Review claimed: 2026-07-26T14:42:19Z
 Depends on: 0002  
 Blocks: 0005, 0009, and Stage 1 crypto implementation  
 Security-sensitive: yes
@@ -36,7 +36,7 @@ derivation labels, KDF policy, limits, versioning, and migration behavior.
       registry are fixed for the authentication/recovery protocol to consume.
 - [x] Unknown-version and migration behavior is explicit.
 - [x] Known-answer and negative-vector format is specified.
-- [ ] Independent cryptographic review is recorded.
+- [x] Independent cryptographic review is recorded.
 
 ## Progress log
 
@@ -182,5 +182,10 @@ authentication public material when the recovery secret is replaced.
 
 ## Review
 
-Pending; independent cryptographic review required. The implementer must not
-approve this security-sensitive task.
+2026-07-26T14:42:19Z — PASS — Hegel (`task_0003_final_reviewer`) independently
+reviewed the bounded `7734cb6..b704638` remediation. No P0/P1 or other
+substantive defect was found. The minimum ARK migration requirements are
+internally consistent: every live child is authenticated under the old ARK,
+rewrapped under the new ARK, atomically committed with root wrappers, and never
+activated partially; full descendant rotation remains a separate
+forward-protection operation. The independent-review criterion is satisfied.

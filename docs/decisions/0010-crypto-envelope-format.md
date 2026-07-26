@@ -1,6 +1,6 @@
 # ADR 0010 — Versioned binary crypto envelope format
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-26
 - Owners: root
 - Supersedes: —

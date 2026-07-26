@@ -1,5 +1,6 @@
 {
-  "format": "neutron-crypto-vectors/draft-1",
+  "format": "neutron-crypto-vectors/v1",
+  "catalogVersion": 1,
   "cases": [
     {
       "id": "rfc5869-sha256-case-1",
@@ -11,74 +12,416 @@
       },
       "parameters": { "length": 42 },
       "expect": {
-        "result": "success",
+        "outcome": "success",
         "output": "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
       }
     },
     {
       "id": "libsodium-argon2id-p1-64m-t3",
       "operation": "argon2id",
-      "input": {
-        "password": "70617373776f7264",
-        "salt": "000102030405060708090a0b0c0d0e0f"
-      },
+      "input": { "password": "70617373776f7264", "salt": "000102030405060708090a0b0c0d0e0f" },
       "parameters": {
         "version": 19,
         "memoryKiB": 65536,
         "iterations": 3,
         "parallelism": 1,
         "length": 32,
-        "provider": "libsodium-crypto_pwhash-argon2id13"
+        "provider": "libsodium-crypto-pwhash-argon2id13"
       },
       "expect": {
-        "result": "success",
+        "outcome": "success",
         "output": "def6fd068289b9a0cf1114f8e978a2c4dab6faef377d895b9c2d59fc93fc5653"
       }
     },
     {
       "id": "password-utf8-multibyte-nul",
-      "operation": "password-utf8",
-      "input": {
-        "text": "A\u0000é🔐"
-      },
-      "parameters": {
-        "normalization": "none",
-        "maximumBytes": 1024
-      },
-      "expect": {
-        "result": "success",
-        "output": "4100c3a9f09f9490"
-      }
+      "operation": "password-encoding",
+      "input": { "text": "A\u0000é🔐" },
+      "parameters": { "normalization": "none", "maximumBytes": 1024 },
+      "expect": { "outcome": "success", "output": "4100c3a9f09f9490" }
     },
     {
       "id": "password-utf16be-reject-unpaired-surrogate",
-      "operation": "password-utf16be-reject",
-      "input": {
-        "utf16be": "d800"
-      },
-      "parameters": {
-        "adapter": "decode-utf16be-as-unicode-scalars-and-reject-unpaired-surrogates"
-      },
+      "operation": "password-encoding",
+      "input": { "utf16be": "d800" },
+      "parameters": { "adapter": "reject-unpaired-surrogates" },
       "expect": {
-        "result": "reject",
-        "error": "invalid-password-encoding"
+        "outcome": "reject",
+        "error": "invalid-password-encoding",
+        "assertions": ["no-kdf-invocation"]
+      }
+    },
+    {
+      "id": "password-utf8-normalization-is-not-applied",
+      "operation": "password-encoding",
+      "input": { "text": "é" },
+      "parameters": { "normalization": "none" },
+      "expect": { "outcome": "success", "output": "65cc81" }
+    },
+    {
+      "id": "password-reject-zero-utf8-bytes",
+      "operation": "password-encoding",
+      "input": { "text": "" },
+      "parameters": { "utf8ByteLength": 0 },
+      "expect": {
+        "outcome": "reject",
+        "error": "password-length",
+        "assertions": ["no-kdf-invocation"]
+      }
+    },
+    {
+      "id": "password-accept-1024-utf8-bytes",
+      "operation": "password-encoding",
+      "input": { "repeatByte": "61" },
+      "parameters": { "repeat": 1024, "utf8ByteLength": 1024 },
+      "expect": { "outcome": "success", "assertions": ["kdf-input-boundary"] }
+    },
+    {
+      "id": "password-reject-1025-utf8-bytes",
+      "operation": "password-encoding",
+      "input": { "repeatByte": "61" },
+      "parameters": { "repeat": 1025, "utf8ByteLength": 1025 },
+      "expect": {
+        "outcome": "reject",
+        "error": "password-length",
+        "assertions": ["no-kdf-invocation"]
+      }
+    },
+    {
+      "id": "envelope-password-root-wrapper",
+      "operation": "envelope",
+      "input": { "kind": 1, "keyMaterialType": 1 },
+      "parameters": { "generation": 1, "ciphertextLength": 51, "kdf": "argon2id13" },
+      "expect": {
+        "outcome": "success",
+        "assertions": ["root-object-id-zero", "root-revision-nonzero"]
+      }
+    },
+    {
+      "id": "envelope-recovery-root-wrapper",
+      "operation": "envelope",
+      "input": { "kind": 2, "keyMaterialType": 1, "label": "recovery/ark-wrap" },
+      "parameters": { "generation": 1, "ciphertextLength": 51 },
+      "expect": {
+        "outcome": "success",
+        "assertions": ["root-object-id-zero", "root-revision-nonzero"]
+      }
+    },
+    {
+      "id": "envelope-ark-mutation-child-fixed-padding",
+      "operation": "envelope",
+      "input": { "kind": 3, "keyMaterialType": 2, "label": "ark/child-key-wrap" },
+      "parameters": { "generation": 0, "plaintextLength": 131, "ciphertextLength": 147 },
+      "expect": {
+        "outcome": "success",
+        "assertions": ["fixed-child-wrapper-size", "internal-padding-zero"]
+      }
+    },
+    {
+      "id": "envelope-ark-vault-child-fixed-padding",
+      "operation": "envelope",
+      "input": { "kind": 3, "keyMaterialType": 3, "label": "ark/child-key-wrap" },
+      "parameters": { "generation": 0, "plaintextLength": 131, "ciphertextLength": 147 },
+      "expect": {
+        "outcome": "success",
+        "assertions": ["fixed-child-wrapper-size", "internal-padding-zero"]
+      }
+    },
+    {
+      "id": "envelope-vault-item-wrapper",
+      "operation": "envelope",
+      "input": { "kind": 4, "keyMaterialType": 4, "label": "vault/item-key-wrap" },
+      "parameters": { "generation": 0, "ciphertextLength": 51 },
+      "expect": { "outcome": "success", "assertions": ["wrapper-generation-zero"] }
+    },
+    {
+      "id": "envelope-item-attachment-wrapper",
+      "operation": "envelope",
+      "input": { "kind": 5, "keyMaterialType": 5, "label": "item/attachment-key-wrap" },
+      "parameters": { "generation": 0, "ciphertextLength": 51 },
+      "expect": { "outcome": "success", "assertions": ["wrapper-generation-zero"] }
+    },
+    {
+      "id": "envelope-item-payload-canonical-padding",
+      "operation": "envelope",
+      "input": { "kind": 16, "label": "item/payload-aead" },
+      "parameters": { "generation": 1, "ciphertextLength": 4112, "plaintextLength": 4096 },
+      "expect": {
+        "outcome": "success",
+        "assertions": ["canonical-payload-padding", "item-generation-nonzero"]
+      }
+    },
+    {
+      "id": "envelope-blob-payload-canonical-padding",
+      "operation": "envelope",
+      "input": { "kind": 17, "label": "attachment/chunk-aead" },
+      "parameters": { "generation": 0, "ciphertextLength": 4112, "plaintextLength": 4096 },
+      "expect": {
+        "outcome": "success",
+        "assertions": ["blob-generation-zero-based", "canonical-payload-padding"]
+      }
+    },
+    {
+      "id": "envelope-index-payload-canonical-padding",
+      "operation": "envelope",
+      "input": { "kind": 18, "label": "vault/index-shard-aead" },
+      "parameters": { "generation": 1, "ciphertextLength": 4112, "plaintextLength": 4096 },
+      "expect": {
+        "outcome": "success",
+        "assertions": ["canonical-payload-padding", "index-generation-nonzero"]
       }
     },
     {
       "id": "reject-unknown-envelope-version",
-      "operation": "envelope-reject",
-      "input": {
-        "envelope": "4e54524e020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-      },
-      "parameters": {},
-      "expect": { "result": "reject", "error": "unsupported-version" }
+      "operation": "envelope",
+      "input": { "mutation": "format-version" },
+      "parameters": { "value": 2 },
+      "expect": {
+        "outcome": "reject",
+        "error": "unsupported-version",
+        "assertions": ["no-plaintext-returned"]
+      }
     },
     {
-      "id": "reject-truncated-header",
-      "operation": "envelope-reject",
-      "input": { "envelope": "4e54524e01" },
-      "parameters": {},
-      "expect": { "result": "reject", "error": "structure" }
+      "id": "reject-unknown-envelope-suite",
+      "operation": "envelope",
+      "input": { "mutation": "suite" },
+      "parameters": { "value": 2 },
+      "expect": {
+        "outcome": "reject",
+        "error": "unsupported-suite",
+        "assertions": ["no-plaintext-returned"]
+      }
+    },
+    {
+      "id": "reject-wrong-envelope-kind",
+      "operation": "envelope",
+      "input": { "mutation": "kind" },
+      "parameters": { "value": 127 },
+      "expect": {
+        "outcome": "reject",
+        "error": "unknown-critical-field",
+        "assertions": ["no-plaintext-returned"]
+      }
+    },
+    {
+      "id": "reject-flags-and-reserved-fields",
+      "operation": "envelope",
+      "input": { "mutation": "flags-reserved" },
+      "parameters": { "flags": 128, "reservedA": 1, "reservedB": 1 },
+      "expect": {
+        "outcome": "reject",
+        "error": "unknown-critical-field",
+        "assertions": ["no-plaintext-returned"]
+      }
+    },
+    {
+      "id": "reject-wrong-argon2id-policy",
+      "operation": "envelope",
+      "input": { "mutation": "kdf-profile" },
+      "parameters": { "memoryKiB": 1024, "iterations": 1, "parallelism": 2 },
+      "expect": { "outcome": "reject", "error": "kdf-policy", "assertions": ["no-kdf-invocation"] }
+    },
+    {
+      "id": "reject-ark-child-nonzero-padding",
+      "operation": "envelope",
+      "input": { "mutation": "internal-padding" },
+      "parameters": { "kind": 3, "paddingByte": 1 },
+      "expect": {
+        "outcome": "reject",
+        "error": "padding",
+        "assertions": ["no-key-material-returned"]
+      }
+    },
+    {
+      "id": "reject-payload-missing-padding-marker",
+      "operation": "envelope",
+      "input": { "mutation": "payload-marker" },
+      "parameters": { "kind": 16 },
+      "expect": { "outcome": "reject", "error": "padding", "assertions": ["no-plaintext-returned"] }
+    },
+    {
+      "id": "reject-wrong-key-authentication",
+      "operation": "envelope",
+      "input": { "mutation": "key" },
+      "parameters": { "kind": 3 },
+      "expect": {
+        "outcome": "reject",
+        "error": "authentication",
+        "assertions": ["no-key-material-returned", "no-plaintext-returned"]
+      }
+    },
+    {
+      "id": "reject-wrong-aad-authentication",
+      "operation": "envelope",
+      "input": { "mutation": "aad" },
+      "parameters": { "kind": 16 },
+      "expect": {
+        "outcome": "reject",
+        "error": "authentication",
+        "assertions": ["no-plaintext-returned"]
+      }
+    },
+    {
+      "id": "reject-mutated-ciphertext-authentication",
+      "operation": "envelope",
+      "input": { "mutation": "ciphertext-byte" },
+      "parameters": { "offset": 0 },
+      "expect": {
+        "outcome": "reject",
+        "error": "authentication",
+        "assertions": ["no-plaintext-returned"]
+      }
+    },
+    {
+      "id": "reject-truncated-envelope",
+      "operation": "envelope",
+      "input": { "mutation": "truncate" },
+      "parameters": { "removedBytes": 1 },
+      "expect": {
+        "outcome": "reject",
+        "error": "structure",
+        "assertions": ["no-plaintext-returned"]
+      }
+    },
+    {
+      "id": "reject-extended-envelope",
+      "operation": "envelope",
+      "input": { "mutation": "append" },
+      "parameters": { "appendedBytes": 1 },
+      "expect": {
+        "outcome": "reject",
+        "error": "structure",
+        "assertions": ["no-plaintext-returned"]
+      }
+    },
+    {
+      "id": "reject-malformed-ciphertext-length",
+      "operation": "envelope",
+      "input": { "mutation": "ciphertext-length" },
+      "parameters": { "declaredLength": 50, "actualLength": 51 },
+      "expect": {
+        "outcome": "reject",
+        "error": "structure",
+        "assertions": ["no-plaintext-returned"]
+      }
+    },
+    {
+      "id": "reject-oversized-envelope",
+      "operation": "envelope",
+      "input": { "mutation": "ciphertext-length" },
+      "parameters": { "kind": 16, "declaredLength": 16777233 },
+      "expect": {
+        "outcome": "reject",
+        "error": "bounds",
+        "assertions": ["no-allocation", "no-plaintext-returned"]
+      }
+    },
+    {
+      "id": "generation-root-initial",
+      "operation": "state-generation",
+      "input": { "kind": 1 },
+      "parameters": { "generation": 1 },
+      "expect": { "outcome": "success", "assertions": ["root-revision-nonzero"] }
+    },
+    {
+      "id": "generation-item-initial-and-incremented",
+      "operation": "state-generation",
+      "input": { "kind": 16 },
+      "parameters": { "initial": 1, "next": 2 },
+      "expect": {
+        "outcome": "success",
+        "assertions": ["item-generation-nonzero", "monotonic-successor"]
+      }
+    },
+    {
+      "id": "generation-reject-zero-item-index",
+      "operation": "state-generation",
+      "input": { "kinds": "16,18" },
+      "parameters": { "generation": 0 },
+      "expect": { "outcome": "reject", "error": "bounds", "assertions": ["structural-rejection"] }
+    },
+    {
+      "id": "generation-reject-stale-account-state",
+      "operation": "state-generation",
+      "input": { "state": "authenticated-successor" },
+      "parameters": { "observed": 5, "candidate": 4, "owner": "task-0004" },
+      "expect": { "outcome": "reject", "error": "bounds", "assertions": ["stale-state-rejection"] }
+    },
+    {
+      "id": "generation-reject-uint64-overflow",
+      "operation": "state-generation",
+      "input": { "counter": "generation" },
+      "parameters": { "value": "18446744073709551615", "increment": 1 },
+      "expect": { "outcome": "reject", "error": "bounds", "assertions": ["counter-does-not-wrap"] }
+    },
+    {
+      "id": "migration-minimum-ark-rewrap-success",
+      "operation": "migration",
+      "input": { "oldArk": "synthetic-old", "newArk": "synthetic-new" },
+      "parameters": { "liveChildren": 2, "rootWrappers": 2 },
+      "expect": {
+        "outcome": "success",
+        "assertions": ["all-live-children-rewrapped", "atomic-successor", "preserve-child-version"]
+      }
+    },
+    {
+      "id": "migration-reject-missing-child",
+      "operation": "migration",
+      "input": { "fault": "missing-child" },
+      "parameters": { "liveChildren": 2, "replacementChildren": 1 },
+      "expect": {
+        "outcome": "reject",
+        "error": "non-atomic-migration",
+        "assertions": ["old-ark-remains-active"]
+      }
+    },
+    {
+      "id": "migration-reject-malformed-child",
+      "operation": "migration",
+      "input": { "fault": "malformed-child" },
+      "parameters": { "kind": 3 },
+      "expect": {
+        "outcome": "reject",
+        "error": "padding",
+        "assertions": ["old-ark-remains-active"]
+      }
+    },
+    {
+      "id": "migration-reject-wrong-old-ark",
+      "operation": "migration",
+      "input": { "fault": "wrong-old-ark" },
+      "parameters": { "kind": 3 },
+      "expect": {
+        "outcome": "reject",
+        "error": "authentication",
+        "assertions": ["old-ark-remains-active", "no-key-material-returned"]
+      }
+    },
+    {
+      "id": "migration-reject-partial-successor",
+      "operation": "migration",
+      "input": { "fault": "partial-successor" },
+      "parameters": { "rootWrappers": 2, "replacementChildren": 1 },
+      "expect": {
+        "outcome": "reject",
+        "error": "non-atomic-migration",
+        "assertions": ["old-ark-remains-active"]
+      }
+    },
+    {
+      "id": "migration-full-rotation-is-distinct",
+      "operation": "migration",
+      "input": { "mode": "full-descendant-rotation" },
+      "parameters": { "newDescendantKeys": true, "payloadReencryption": true },
+      "expect": {
+        "outcome": "success",
+        "assertions": [
+          "new-descendant-keys",
+          "new-mutation-signing-binding",
+          "payload-reencryption"
+        ]
+      }
     }
   ]
 }

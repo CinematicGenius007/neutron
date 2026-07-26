@@ -1,13 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neutron.example/schema/crypto-envelope-v1.schema.json",
-  "title": "Neutron crypto envelope vectors draft v1",
-  "$comment": "Draft only: Task 0005 owns executable schema validation, fixture lifecycle, completeness, and immutability. JSON parsing is not validation.",
+  "title": "Neutron immutable crypto envelope vector catalog v1",
+  "$comment": "This schema validates vector syntax. Cryptographic verification is performed only by a runtime adapter against the supplied expected values.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["format", "cases"],
+  "required": ["format", "catalogVersion", "cases"],
   "properties": {
-    "format": { "const": "neutron-crypto-vectors/draft-1" },
+    "format": { "const": "neutron-crypto-vectors/v1" },
+    "catalogVersion": { "const": 1 },
     "cases": {
       "type": "array",
       "minItems": 1,
@@ -19,69 +20,79 @@
       "type": "string",
       "pattern": "^(?:[0-9a-f]{2})*$"
     },
+    "scalar": {
+      "anyOf": [{ "type": "boolean" }, { "type": "integer" }, { "type": "string" }]
+    },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome"],
+      "properties": {
+        "outcome": { "enum": ["success", "reject"] },
+        "output": { "$ref": "#/$defs/hex" },
+        "error": {
+          "enum": [
+            "authentication",
+            "bounds",
+            "invalid-password-encoding",
+            "kdf-policy",
+            "non-atomic-migration",
+            "padding",
+            "password-length",
+            "structure",
+            "unknown-critical-field",
+            "unsupported-suite",
+            "unsupported-version"
+          ]
+        },
+        "assertions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,79}$" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "outcome": { "const": "success" } } },
+          "then": {
+            "anyOf": [
+              { "required": ["output"], "properties": { "output": {} } },
+              { "required": ["assertions"], "properties": { "assertions": {} } }
+            ]
+          }
+        },
+        {
+          "if": { "properties": { "outcome": { "const": "reject" } } },
+          "then": { "required": ["error"], "properties": { "error": {} } }
+        }
+      ]
+    },
     "case": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "operation", "expect"],
+      "required": ["id", "operation", "input", "parameters", "expect"],
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,79}$" },
         "operation": {
           "enum": [
-            "hkdf-sha256",
             "argon2id",
-            "password-utf8",
-            "password-utf16be-reject",
-            "envelope-encrypt",
-            "envelope-decrypt",
-            "envelope-reject"
+            "envelope",
+            "hkdf-sha256",
+            "migration",
+            "password-encoding",
+            "state-generation"
           ]
         },
         "input": {
           "type": "object",
-          "properties": {
-            "text": { "type": "string" }
-          },
-          "additionalProperties": { "$ref": "#/$defs/hex" }
+          "additionalProperties": { "$ref": "#/$defs/scalar" }
         },
         "parameters": {
           "type": "object",
-          "additionalProperties": {
-            "type": ["integer", "string", "boolean"]
-          }
+          "additionalProperties": { "$ref": "#/$defs/scalar" }
         },
-        "expect": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["result"],
-          "properties": {
-            "result": { "enum": ["success", "reject"] },
-            "output": { "$ref": "#/$defs/hex" },
-            "error": {
-              "enum": [
-                "structure",
-                "unsupported-version",
-                "unsupported-suite",
-                "unknown-critical-field",
-                "bounds",
-                "kdf-policy",
-                "authentication",
-                "padding",
-                "invalid-password-encoding",
-                "password-length"
-              ]
-            }
-          },
-          "allOf": [
-            {
-              "if": { "properties": { "result": { "const": "success" } } },
-              "then": { "required": ["output"] }
-            },
-            {
-              "if": { "properties": { "result": { "const": "reject" } } },
-              "then": { "required": ["error"] }
-            }
-          ]
-        }
+        "expect": { "$ref": "#/$defs/expect" }
       }
     }
   }

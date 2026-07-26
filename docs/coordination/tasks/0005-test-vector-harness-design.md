@@ -1,8 +1,8 @@
 # TASK 0005 — Test-vector and adversarial harness design
 
-Status: active
-Owner: /root
-Claimed: 2026-07-26T15:49:57Z
+Status: blocked
+Owner: unassigned
+Claimed: —
 Worktree/branch: shared-worktree (main)
 Reviewer: unassigned  
 Review claimed: —  
@@ -120,6 +120,14 @@ has no configured real-browser runner. The candidate catalog remains 42 cases
 synthetic XChaCha generator smoke output are concrete cryptographic outputs;
 the remaining scenario entries require reviewed generator output before the
 catalog can be frozen.
+
+2026-07-26T15:49:57Z — The validated catalog is now defensively copied/frozen
+and branded before verification; adapters receive a separately copied/frozen
+request. Normal `pnpm test` no longer imports the reference generator. Explicit
+`pnpm --filter @neutron/test-vectors test:generate` runs the separate generator
+test and anchored HKDF, Argon2id, and XChaCha outputs. The catalog is still
+metadata-heavy and no real-browser runner is configured, so this task remains
+blocked.
 
 Blocker: exhaustive positive/negative primitive and envelope verification cannot
 be completed until the candidate catalog is expanded into exact reviewed

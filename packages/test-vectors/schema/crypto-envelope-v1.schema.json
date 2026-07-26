@@ -21,7 +21,7 @@
     "bytes72": { "type": "string", "pattern": "^(?:[0-9a-f]{2}){72}$" },
     "uint64": {
       "type": "string",
-      "pattern": "^(?:0|[1-9][0-9]{0,18}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|18446744[0-6][0-9]{11}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|184467440737[0-8][0-9]{7}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]|1844674407370955161[0-5])$"
+      "pattern": "^(?:0|[1-9][0-9]{0,18}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]|1844674407370955161[0-5])$"
     },
     "error": {
       "enum": [
@@ -44,7 +44,7 @@
       "required": ["outcome", "output"],
       "properties": { "outcome": { "const": "success" }, "output": { "$ref": "#/$defs/hex" } }
     },
-    "stateSuccess": {
+    "stateGenerationSuccess": {
       "type": "object",
       "additionalProperties": false,
       "required": ["outcome", "state"],
@@ -53,11 +53,22 @@
         "state": {
           "type": "object",
           "additionalProperties": false,
-          "minProperties": 1,
-          "properties": {
-            "generation": { "$ref": "#/$defs/uint64" },
-            "activeArkEpoch": { "$ref": "#/$defs/uint64" }
-          }
+          "required": ["generation"],
+          "properties": { "generation": { "$ref": "#/$defs/uint64" } }
+        }
+      }
+    },
+    "migrationSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "state"],
+      "properties": {
+        "outcome": { "const": "success" },
+        "state": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["activeArkEpoch"],
+          "properties": { "activeArkEpoch": { "$ref": "#/$defs/uint64" } }
         }
       }
     },
@@ -70,7 +81,8 @@
     "expect": {
       "oneOf": [
         { "$ref": "#/$defs/byteSuccess" },
-        { "$ref": "#/$defs/stateSuccess" },
+        { "$ref": "#/$defs/stateGenerationSuccess" },
+        { "$ref": "#/$defs/migrationSuccess" },
         { "$ref": "#/$defs/rejection" }
       ]
     },
@@ -132,7 +144,7 @@
         "expect": { "$ref": "#/$defs/byteSuccess" }
       }
     },
-    "passwordUtf8": {
+    "passwordUnicodeScalars": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "operation", "input", "parameters", "expect"],
@@ -142,14 +154,28 @@
         "input": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["utf8"],
-          "properties": { "utf8": { "$ref": "#/$defs/hex" } }
+          "required": ["scalars"],
+          "properties": {
+            "scalars": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1114111,
+                "not": { "minimum": 55296, "maximum": 57343 }
+              }
+            }
+          }
         },
         "parameters": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["encoding", "normalization"],
-          "properties": { "encoding": { "const": "utf8" }, "normalization": { "const": "none" } }
+          "required": ["source", "encoding", "normalization"],
+          "properties": {
+            "source": { "const": "unicode-scalars" },
+            "encoding": { "const": "utf8" },
+            "normalization": { "const": "none" }
+          }
         },
         "expect": { "oneOf": [{ "$ref": "#/$defs/byteSuccess" }, { "$ref": "#/$defs/rejection" }] }
       }
@@ -234,7 +260,9 @@
           "required": ["previousGeneration"],
           "properties": { "previousGeneration": { "$ref": "#/$defs/uint64" } }
         },
-        "expect": { "oneOf": [{ "$ref": "#/$defs/stateSuccess" }, { "$ref": "#/$defs/rejection" }] }
+        "expect": {
+          "oneOf": [{ "$ref": "#/$defs/stateGenerationSuccess" }, { "$ref": "#/$defs/rejection" }]
+        }
       }
     },
     "migration": {
@@ -260,14 +288,16 @@
           "required": ["newArkEpoch"],
           "properties": { "newArkEpoch": { "$ref": "#/$defs/uint64" } }
         },
-        "expect": { "oneOf": [{ "$ref": "#/$defs/stateSuccess" }, { "$ref": "#/$defs/rejection" }] }
+        "expect": {
+          "oneOf": [{ "$ref": "#/$defs/migrationSuccess" }, { "$ref": "#/$defs/rejection" }]
+        }
       }
     },
     "case": {
       "oneOf": [
         { "$ref": "#/$defs/hkdf" },
         { "$ref": "#/$defs/argon2id" },
-        { "$ref": "#/$defs/passwordUtf8" },
+        { "$ref": "#/$defs/passwordUnicodeScalars" },
         { "$ref": "#/$defs/passwordUtf16Be" },
         { "$ref": "#/$defs/envelope" },
         { "$ref": "#/$defs/stateGeneration" },

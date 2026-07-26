@@ -14,24 +14,30 @@ validated by `schema/crypto-envelope-v1.pending.schema.json`. It contains 36
 pending requirements: two password-encoding (one success, one rejection), 23
 envelope (nine successes, 14 rejections), five state-generation (two successes,
 three rejections), and six migration (two successes, four rejections). A pending
-record has stable references, missing-material requirements, and a reason it is
-not executable; it intentionally has no `expect` shape and is never passed to
-`verifyCatalog`, included in the executable digest, or counted as
-interoperability evidence.
+record has a schema-required success/rejection outcome, structured
+document/heading references, missing-material requirements, and a reason it is
+not executable. Pending and executable IDs are validated as disjoint and their
+union is exactly 42 IDs. The manifest intentionally has no `expect` shape and
+is never passed to `verifyCatalog`, included in the executable digest, or
+counted as interoperability evidence.
 
 The executable schema uses operation-discriminated branches for HKDF-SHA-256,
 Argon2id, password encoding, envelope processing, state generation, and
 migration. Every object is closed to unknown fields. Inputs use lowercase,
-even-length hexadecimal where byte material is required; state counters use
-bounded decimal strings rather than unsafe JSON numbers. An executable result is
-either exact output bytes, a canonical state result, or one registered rejection
-error—never an assertion-only success or a mixed result.
+even-length hexadecimal where byte material is required. Password vectors use
+pre-encoding Unicode scalar arrays; adapters must reject surrogate/out-of-range
+scalars, encode the accepted sequence as unnormalized UTF-8, and then apply the
+byte-length rule. State counters use canonical decimal strings with a JSON-schema
+and runtime-`BigInt` uint64 ceiling rather than unsafe JSON numbers. An
+executable result is either exact output bytes, a canonical state result, or one
+registered rejection error—never an assertion-only success or a mixed result.
 
 The JSON Schema is validated with Ajv before any adapter sees a case. The
 runtime-neutral `VectorVerifier` receives an operation-specific, copied, deeply
 frozen request and compares its independently observed result with the catalog's
 exact expected output, canonical state, or rejection code. It provides no
-generation API.
+generation API. Canonical state comparison validates the full field set and is
+independent of property insertion order.
 
 The reference generator pins `@noble/ciphers@2.2.0` and
 `@noble/hashes@2.2.0`, both MIT-licensed packages from the Noble Cryptography

@@ -103,6 +103,16 @@ persisted cryptographic operation and parser boundary.
   only. The prior module-private WeakSet boundary was retained unchanged. This
   task remains blocked on concrete reviewed envelope/migration material and
   real-browser execution.
+- 2026-07-26T18:09:53Z — Remediated the independent review of `50bb394`: the
+  uint64 schema pattern now has a tested `2^64-1` ceiling and runtime validation
+  adds a `BigInt` ceiling; canonical-state comparison explicitly compares field
+  names and values without insertion-order dependence; valid password vectors
+  now use Unicode scalar arrays rather than pre-encoded bytes; and pending
+  records now use schema-validated document/heading references plus a required
+  outcome. Tests enforce pending/executable disjointness, 42 unique combined
+  IDs, pending-ID uniqueness, outcome-derived counts, and reference resolution.
+  The task returns to blocked: concrete reviewed envelope/migration material and
+  real-browser execution remain out of scope blockers.
 
 ## Handoff
 
@@ -169,6 +179,15 @@ spread, structured-cloned, prototype-derived, and second-module wrappers fail
 before adapter invocation. Browser execution remains unconfigured and is not
 claimed.
 
+2026-07-26T18:09:53Z — `pnpm install --frozen-lockfile`, `pnpm test` (one file,
+14 tests), `pnpm --filter @neutron/test-vectors test:generate` (one generator
+test; HKDF, Argon2id, and XChaCha anchors unchanged), `pnpm typecheck`, `pnpm
+lint`, `pnpm format:check`, `pnpm build`, and `git diff --check` each exited 0.
+The uint64 schema/runtime boundary accepts 0, 1, `18446744073709551614`, and
+`18446744073709551615`; it rejects leading-zero, signed, fractional,
+exponent-form, over-limit, and JSON-number inputs. The reference test resolved
+all pending document/heading pairs against the current Markdown sources.
+
 Blocker: the schema/catalog split is complete, but pending requirements must
 become exact reviewed envelope and migration bytes (or reviewed base-vector plus
 mutation recipes), and a real-browser runner must execute the committed
@@ -194,3 +213,9 @@ rejects plain/spread forgeries, structured clones, prototype wrappers, and
 second-module wrappers before adapter invocation, and confirmed freeze/copy
 behavior. This review did not approve the still-pending schema/catalog split or
 browser execution.
+
+2026-07-26T18:01:57Z — FAIL — independent review of `50bb394` found 0 P0, 3
+P1, and 2 P2: uint64 overflow accepted by schema/runtime regex, order-sensitive
+canonical-state comparison, echoable pre-encoded password inputs, stale pending
+references, and prose-only pending outcomes. This remediation is limited to
+those findings.

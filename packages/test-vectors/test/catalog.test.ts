@@ -7,7 +7,11 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
 
 import {
+  canonicalStatesEqual,
+  isUint64,
   loadValidatedCatalog,
+  loadValidatedPendingManifest,
+  uint64DecimalPattern,
   type ValidatedCatalog,
   type VectorCatalog,
   type VectorObservation,
@@ -22,6 +26,7 @@ const schemaPath = join(packageRoot, "schema/crypto-envelope-v1.schema.json");
 const pendingPath = join(packageRoot, "requirements/crypto-envelope-v1.pending.json");
 const pendingSchemaPath = join(packageRoot, "schema/crypto-envelope-v1.pending.schema.json");
 const digestPath = join(packageRoot, "fixtures/crypto-envelope-v1.sha256");
+const repositoryRoot = join(packageRoot, "..", "..");
 
 async function loadJson(path: string): Promise<unknown> {
   return JSON.parse(await readFile(path, "utf8")) as unknown;
@@ -61,9 +66,175 @@ describe("crypto-envelope v1 executable catalog", () => {
     ]);
     expect(validateCatalog(catalog), JSON.stringify(validateCatalog.errors)).toBe(true);
     expect(validatePending(pending), JSON.stringify(validatePending.errors)).toBe(true);
-    expect((catalog as { cases: unknown[] }).cases).toHaveLength(6);
-    expect((pending as { requirements: unknown[] }).requirements).toHaveLength(36);
+    const executable = catalog as {
+      cases: Array<{ id: string; operation: string; expect: { outcome: string } }>;
+    };
+    const requirements = pending as {
+      requirements: Array<{ id: string; operation: string; requiredOutcome: string }>;
+    };
+    expect(executable.cases).toHaveLength(6);
+    expect(requirements.requirements).toHaveLength(36);
+    expect(() =>
+      loadValidatedPendingManifest(
+        pending,
+        validatePending,
+        executable.cases.map(({ id }) => id),
+      ),
+    ).not.toThrow();
+    expect(
+      new Set([...executable.cases, ...requirements.requirements].map(({ id }) => id)).size,
+    ).toBe(42);
+    expect(executable.cases.filter(({ operation }) => operation === "hkdf-sha256")).toHaveLength(1);
+    expect(executable.cases.filter(({ operation }) => operation === "argon2id")).toHaveLength(1);
+    expect(
+      executable.cases.filter(({ operation }) => operation === "password-encoding"),
+    ).toHaveLength(4);
+    expect(
+      requirements.requirements.filter(({ requiredOutcome }) => requiredOutcome === "success"),
+    ).toHaveLength(14);
+    expect(
+      requirements.requirements.filter(({ requiredOutcome }) => requiredOutcome === "reject"),
+    ).toHaveLength(22);
+    const countByOperationAndOutcome = <T extends { operation: string }>(
+      entries: readonly (T & { outcome?: string; requiredOutcome?: string })[],
+    ) =>
+      Object.fromEntries(
+        Object.entries(Object.groupBy(entries, ({ operation }) => operation)).map(
+          ([operation, values]) => [
+            operation,
+            {
+              success:
+                values?.filter((entry) => (entry.outcome ?? entry.requiredOutcome) === "success")
+                  .length ?? 0,
+              reject:
+                values?.filter((entry) => (entry.outcome ?? entry.requiredOutcome) === "reject")
+                  .length ?? 0,
+            },
+          ],
+        ),
+      );
+    expect(
+      countByOperationAndOutcome(
+        executable.cases.map(({ operation, expect }) => ({ operation, outcome: expect.outcome })),
+      ),
+    ).toEqual({
+      "hkdf-sha256": { success: 1, reject: 0 },
+      argon2id: { success: 1, reject: 0 },
+      "password-encoding": { success: 2, reject: 2 },
+    });
+    expect(countByOperationAndOutcome(requirements.requirements)).toEqual({
+      "password-encoding": { success: 1, reject: 1 },
+      envelope: { success: 9, reject: 14 },
+      "state-generation": { success: 2, reject: 3 },
+      migration: { success: 2, reject: 4 },
+    });
     expect(JSON.stringify(pending)).not.toContain('"expect"');
+  });
+
+  it("enforces pending IDs and disjoint executable coverage", async () => {
+    const [catalog, pending, validatePending] = await Promise.all([
+      loadJson(fixturePath),
+      loadJson(pendingPath),
+      validator(pendingSchemaPath),
+    ]);
+    const executableIds = (catalog as { cases: Array<{ id: string }> }).cases.map(({ id }) => id);
+    const duplicate = structuredClone(pending) as { requirements: Array<{ id: string }> };
+    const firstRequirement = duplicate.requirements[0];
+    const firstExecutableId = executableIds[0];
+    if (firstRequirement === undefined || firstExecutableId === undefined)
+      throw new Error("fixture IDs missing");
+    duplicate.requirements.push(firstRequirement);
+    expect(() => loadValidatedPendingManifest(duplicate, validatePending, executableIds)).toThrow(
+      "duplicate pending requirement id",
+    );
+    const overlap = structuredClone(pending) as { requirements: Array<{ id: string }> };
+    const overlappingRequirement = overlap.requirements[0];
+    if (overlappingRequirement === undefined) throw new Error("pending requirement missing");
+    overlappingRequirement.id = firstExecutableId;
+    expect(() => loadValidatedPendingManifest(overlap, validatePending, executableIds)).toThrow(
+      "pending requirement overlaps executable vector",
+    );
+    const missingOutcome = structuredClone(pending) as {
+      requirements: Array<Record<string, unknown>>;
+    };
+    delete missingOutcome.requirements[0]?.requiredOutcome;
+    expect(validatePending(missingOutcome)).toBe(false);
+    const invalidOutcome = structuredClone(pending) as {
+      requirements: Array<{ requiredOutcome: string }>;
+    };
+    const firstInvalidOutcome = invalidOutcome.requirements[0];
+    if (firstInvalidOutcome === undefined) throw new Error("pending requirement missing");
+    firstInvalidOutcome.requiredOutcome = "unknown";
+    expect(validatePending(invalidOutcome)).toBe(false);
+  });
+
+  it("resolves every structured pending reference to an exact Markdown heading", async () => {
+    const pending = (await loadJson(pendingPath)) as {
+      requirements: Array<{ references: Array<{ document: string; section: string }> }>;
+    };
+    const documents = new Map<string, string>();
+    for (const { document, section } of pending.requirements.flatMap(
+      ({ references }) => references,
+    )) {
+      const contents =
+        documents.get(document) ?? (await readFile(join(repositoryRoot, document), "utf8"));
+      documents.set(document, contents);
+      expect(contents).toContain(`## ${section}`);
+    }
+  });
+
+  it("keeps schema and runtime uint64 checks synchronized at the full boundary", async () => {
+    const schema = (await loadJson(schemaPath)) as { $defs: { uint64: { pattern: string } } };
+    const validate = await validator(schemaPath);
+    expect(schema.$defs.uint64.pattern).toBe(uint64DecimalPattern);
+    const accepted = ["0", "1", "18446744073709551614", "18446744073709551615"];
+    const rejected: unknown[] = [
+      "00",
+      "01",
+      "-1",
+      "+1",
+      "1.0",
+      "1e3",
+      "18446744073709551616",
+      "18446744073709551999",
+      "99999999999999999999",
+      1,
+      Number.MAX_SAFE_INTEGER + 1,
+    ];
+    for (const value of accepted) {
+      expect(isUint64(value)).toBe(true);
+      const candidate = {
+        format: "neutron-crypto-vectors/v1",
+        catalogVersion: 1,
+        cases: [
+          {
+            id: "state-uint64-boundary",
+            operation: "state-generation",
+            input: { kind: 16, generation: value },
+            parameters: { previousGeneration: "0" },
+            expect: { outcome: "reject", error: "bounds" },
+          },
+        ],
+      };
+      expect(validate(candidate), JSON.stringify(validate.errors)).toBe(true);
+    }
+    for (const value of rejected) {
+      expect(isUint64(value)).toBe(false);
+      const candidate = {
+        format: "neutron-crypto-vectors/v1",
+        catalogVersion: 1,
+        cases: [
+          {
+            id: "state-uint64-boundary",
+            operation: "state-generation",
+            input: { kind: 16, generation: value },
+            parameters: { previousGeneration: "0" },
+            expect: { outcome: "reject", error: "bounds" },
+          },
+        ],
+      };
+      expect(validate(candidate), JSON.stringify(validate.errors)).toBe(false);
+    }
   });
 
   it("matches the executable-only digest", async () => {
@@ -176,6 +347,86 @@ describe("crypto-envelope v1 executable catalog", () => {
         `${name}: ${JSON.stringify(validate.errors)}`,
       ).toBe(false);
     }
+  });
+
+  it("requires Unicode scalar conversion and rejects dishonest echo adapters", async () => {
+    const catalog = await loadCatalog();
+    const executablePasswords = catalog.catalog.cases.filter(
+      (vector) => vector.operation === "password-encoding" && vector.expect.outcome === "success",
+    );
+    expect(executablePasswords).toHaveLength(2);
+    for (const vector of executablePasswords) {
+      expect("scalars" in vector.input).toBe(true);
+      expect("utf8" in vector.input).toBe(false);
+    }
+    const firstPassword = executablePasswords[0];
+    if (firstPassword === undefined) throw new Error("password vector missing");
+    const selected = await validatedSubset(catalog.catalog, [firstPassword]);
+    await expect(
+      verifyCatalog(selected, {
+        verify: (request) => ({
+          outcome: "success",
+          output: (request.input as { scalars: readonly number[] }).scalars.join(""),
+        }),
+      }),
+    ).resolves.toEqual([{ id: "password-utf8-multibyte-nul", passed: false, reason: "output" }]);
+
+    const validate = await validator(schemaPath);
+    const raw = await loadJson(fixturePath);
+    const password = (raw as { cases: Array<Record<string, unknown>> }).cases.find(
+      ({ id }) => id === "password-utf8-multibyte-nul",
+    );
+    if (password === undefined) throw new Error("password vector missing");
+    for (const invalidScalar of [55296, 57343, 1114112]) {
+      const candidate = structuredClone(raw) as { cases: Array<Record<string, unknown>> };
+      const target = candidate.cases.find(({ id }) => id === "password-utf8-multibyte-nul");
+      if (target === undefined) throw new Error("password vector missing");
+      (target.input as { scalars: number[] }).scalars.push(invalidScalar);
+      expect(validate(candidate), JSON.stringify(validate.errors)).toBe(false);
+    }
+  });
+
+  it("compares canonical states independent of insertion order and rejects mismatches", () => {
+    expect(
+      canonicalStatesEqual(
+        { generation: "1", activeArkEpoch: "2" },
+        { activeArkEpoch: "2", generation: "1" },
+      ),
+    ).toBe(true);
+    expect(
+      canonicalStatesEqual({ generation: "1", activeArkEpoch: "2" }, { generation: "1" }),
+    ).toBe(false);
+    expect(canonicalStatesEqual({ generation: "1" }, { generation: "1", extra: "2" })).toBe(false);
+    expect(canonicalStatesEqual({ generation: "1" }, { generation: "2" })).toBe(false);
+    expect(
+      canonicalStatesEqual(
+        { generation: "18446744073709551616" },
+        { generation: "18446744073709551616" },
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects invalid uint64 state observations at runtime", async () => {
+    const catalog = await loadCatalog({
+      format: "neutron-crypto-vectors/v1",
+      catalogVersion: 1,
+      cases: [
+        {
+          id: "state-runtime-uint64",
+          operation: "state-generation",
+          input: { kind: 16, generation: "1" },
+          parameters: { previousGeneration: "0" },
+          expect: { outcome: "success", state: { generation: "1" } },
+        },
+      ],
+    });
+    await expect(
+      verifyCatalog(catalog, {
+        verify: () => ({ outcome: "success", state: { generation: "18446744073709551616" } }),
+      }),
+    ).resolves.toEqual([
+      { id: "state-runtime-uint64", passed: false, reason: "invalid-observation" },
+    ]);
   });
 
   it("never invokes an adapter for an invalid catalog", async () => {

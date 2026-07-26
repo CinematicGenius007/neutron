@@ -36,8 +36,8 @@
     {
       "id": "password-utf8-multibyte-nul",
       "operation": "password-encoding",
-      "input": { "utf8": "4100c3a9f09f9490" },
-      "parameters": { "encoding": "utf8", "normalization": "none" },
+      "input": { "scalars": [65, 0, 233, 128272] },
+      "parameters": { "source": "unicode-scalars", "encoding": "utf8", "normalization": "none" },
       "expect": { "outcome": "success", "output": "4100c3a9f09f9490" }
     },
     {
@@ -50,15 +50,15 @@
     {
       "id": "password-utf8-normalization-is-not-applied",
       "operation": "password-encoding",
-      "input": { "utf8": "65cc81" },
-      "parameters": { "encoding": "utf8", "normalization": "none" },
+      "input": { "scalars": [101, 769] },
+      "parameters": { "source": "unicode-scalars", "encoding": "utf8", "normalization": "none" },
       "expect": { "outcome": "success", "output": "65cc81" }
     },
     {
       "id": "password-reject-zero-utf8-bytes",
       "operation": "password-encoding",
-      "input": { "utf8": "" },
-      "parameters": { "encoding": "utf8", "normalization": "none" },
+      "input": { "scalars": [] },
+      "parameters": { "source": "unicode-scalars", "encoding": "utf8", "normalization": "none" },
       "expect": { "outcome": "reject", "error": "password-length" }
     }
   ]

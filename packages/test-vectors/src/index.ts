@@ -43,11 +43,15 @@ export interface Argon2idRequest {
   }>;
 }
 
-export interface PasswordUtf8Request {
+export interface PasswordUnicodeScalarsRequest {
   readonly id: string;
   readonly operation: "password-encoding";
-  readonly input: Readonly<{ utf8: Hex }>;
-  readonly parameters: Readonly<{ encoding: "utf8"; normalization: "none" }>;
+  readonly input: Readonly<{ scalars: readonly number[] }>;
+  readonly parameters: Readonly<{
+    source: "unicode-scalars";
+    encoding: "utf8";
+    normalization: "none";
+  }>;
 }
 
 export interface PasswordUtf16BeRequest {
@@ -92,7 +96,7 @@ export type VectorRequest =
   | EnvelopeRequest
   | HkdfRequest
   | MigrationRequest
-  | PasswordUtf8Request
+  | PasswordUnicodeScalarsRequest
   | PasswordUtf16BeRequest
   | StateGenerationRequest;
 
@@ -101,10 +105,9 @@ export interface ByteOutputSuccess {
   readonly output: Hex;
 }
 
-export interface CanonicalStateResult {
-  readonly generation?: Uint64;
-  readonly activeArkEpoch?: Uint64;
-}
+export type StateGenerationResult = Readonly<{ generation: Uint64 }>;
+export type MigrationResult = Readonly<{ activeArkEpoch: Uint64 }>;
+export type CanonicalStateResult = StateGenerationResult | MigrationResult;
 
 export interface StateResultSuccess {
   readonly outcome: "success";
@@ -125,6 +128,31 @@ export interface VectorCatalog {
   readonly cases: readonly VectorCase[];
   readonly catalogVersion: 1;
   readonly format: "neutron-crypto-vectors/v1";
+}
+
+export interface PendingReference {
+  readonly document:
+    | "docs/decisions/0010-crypto-envelope-format.md"
+    | "docs/protocol/crypto-envelope.md"
+    | "docs/security/crypto-envelope.md";
+  readonly section: string;
+}
+
+export interface PendingRequirement {
+  readonly id: string;
+  readonly operation: VectorOperation;
+  readonly references: readonly PendingReference[];
+  readonly requiredInput: readonly string[];
+  readonly requiredExpectedResult: readonly string[];
+  readonly reasonNotExecutable: string;
+  readonly requiredOutcome: "reject" | "success";
+  readonly status: "pending";
+}
+
+export interface PendingManifest {
+  readonly format: "neutron-crypto-vector-requirements/v1";
+  readonly manifestVersion: 1;
+  readonly requirements: readonly PendingRequirement[];
 }
 
 const validatedCatalogBrand: unique symbol = Symbol("validatedCatalog");
@@ -175,9 +203,31 @@ export function loadValidatedCatalog(
   return validated;
 }
 
+export function loadValidatedPendingManifest(
+  candidate: unknown,
+  validate: CatalogValidator,
+  executableIds: Iterable<string>,
+): PendingManifest {
+  if (!validate(candidate))
+    throw new Error(`invalid pending manifest: ${JSON.stringify(validate.errors)}`);
+  const manifest = structuredClone(candidate) as PendingManifest;
+  const pendingIds = new Set<string>();
+  const executable = new Set(executableIds);
+  for (const requirement of manifest.requirements) {
+    if (pendingIds.has(requirement.id))
+      throw new Error(`duplicate pending requirement id: ${requirement.id}`);
+    if (executable.has(requirement.id))
+      throw new Error(`pending requirement overlaps executable vector: ${requirement.id}`);
+    pendingIds.add(requirement.id);
+  }
+  return deepFreeze(manifest);
+}
+
 const hex = /^(?:[0-9a-f]{2})*$/;
-const uint64 =
-  /^(?:0|[1-9][0-9]{0,18}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|18446744[0-6][0-9]{11}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|184467440737[0-8][0-9]{7}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]|1844674407370955161[0-5])$/;
+export const uint64DecimalPattern =
+  "^(?:0|[1-9][0-9]{0,18}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]|1844674407370955161[0-5])$";
+const uint64 = new RegExp(uint64DecimalPattern);
+const maxUint64 = 0xffff_ffff_ffff_ffffn;
 const errors = new Set<VectorError>([
   "authentication",
   "bounds",
@@ -192,13 +242,17 @@ const errors = new Set<VectorError>([
   "unsupported-version",
 ]);
 
+export function isUint64(value: unknown): value is Uint64 {
+  return typeof value === "string" && uint64.test(value) && BigInt(value) <= maxUint64;
+}
+
 function isCanonicalState(value: unknown): value is CanonicalStateResult {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
   const keys = Object.keys(candidate);
-  if (keys.length === 0 || keys.some((key) => key !== "generation" && key !== "activeArkEpoch"))
-    return false;
-  return Object.values(candidate).every((item) => typeof item === "string" && uint64.test(item));
+  if (keys.length < 1 || keys.length > 2) return false;
+  if (keys.some((key) => key !== "generation" && key !== "activeArkEpoch")) return false;
+  return keys.every((key) => isUint64(candidate[key]));
 }
 
 function isObservation(value: unknown): value is VectorObservation {
@@ -224,6 +278,20 @@ function isObservation(value: unknown): value is VectorObservation {
   );
 }
 
+export function canonicalStatesEqual(expected: unknown, observed: unknown): boolean {
+  if (!isCanonicalState(expected) || !isCanonicalState(observed)) return false;
+  const expectedState = expected as Readonly<Record<string, Uint64>>;
+  const observedState = observed as Readonly<Record<string, Uint64>>;
+  const expectedKeys = Object.keys(expected).sort();
+  const observedKeys = Object.keys(observed).sort();
+  return (
+    expectedKeys.length === observedKeys.length &&
+    expectedKeys.every(
+      (key, index) => key === observedKeys[index] && expectedState[key] === observedState[key],
+    )
+  );
+}
+
 function compare(vector: VectorCase, value: unknown): VerificationResult {
   if (!isObservation(value)) return { id: vector.id, passed: false, reason: "invalid-observation" };
   const expected = vector.expect;
@@ -239,7 +307,7 @@ function compare(vector: VectorCase, value: unknown): VerificationResult {
         ? { id: vector.id, passed: true }
         : { id: vector.id, passed: false, reason: "output" };
     if ("state" in expected && "state" in value)
-      return JSON.stringify(expected.state) === JSON.stringify(value.state)
+      return canonicalStatesEqual(expected.state, value.state)
         ? { id: vector.id, passed: true }
         : { id: vector.id, passed: false, reason: "state" };
   }

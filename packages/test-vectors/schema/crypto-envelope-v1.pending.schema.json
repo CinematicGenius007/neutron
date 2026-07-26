@@ -29,6 +29,21 @@
       "uniqueItems": true,
       "items": { "type": "string", "minLength": 1, "maxLength": 500 }
     },
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["document", "section"],
+      "properties": {
+        "document": {
+          "enum": [
+            "docs/protocol/crypto-envelope.md",
+            "docs/security/crypto-envelope.md",
+            "docs/decisions/0010-crypto-envelope-format.md"
+          ]
+        },
+        "section": { "type": "string", "minLength": 1, "maxLength": 100 }
+      }
+    },
     "requirement": {
       "type": "object",
       "additionalProperties": false,
@@ -39,15 +54,22 @@
         "requiredInput",
         "requiredExpectedResult",
         "reasonNotExecutable",
+        "requiredOutcome",
         "status"
       ],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "operation": { "$ref": "#/$defs/operation" },
-        "references": { "$ref": "#/$defs/textList" },
+        "references": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/reference" }
+        },
         "requiredInput": { "$ref": "#/$defs/textList" },
         "requiredExpectedResult": { "$ref": "#/$defs/textList" },
         "reasonNotExecutable": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "requiredOutcome": { "enum": ["success", "reject"] },
         "status": { "const": "pending" }
       }
     }

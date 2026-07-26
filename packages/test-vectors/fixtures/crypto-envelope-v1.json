@@ -1,0 +1,82 @@
+{
+  "format": "neutron-crypto-vectors/draft-1",
+  "cases": [
+    {
+      "id": "rfc5869-sha256-case-1",
+      "operation": "hkdf-sha256",
+      "input": {
+        "ikm": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+        "salt": "000102030405060708090a0b0c",
+        "info": "f0f1f2f3f4f5f6f7f8f9"
+      },
+      "parameters": { "length": 42 },
+      "expect": {
+        "result": "success",
+        "output": "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
+      }
+    },
+    {
+      "id": "libsodium-argon2id-p1-64m-t3",
+      "operation": "argon2id",
+      "input": {
+        "password": "70617373776f7264",
+        "salt": "000102030405060708090a0b0c0d0e0f"
+      },
+      "parameters": {
+        "version": 19,
+        "memoryKiB": 65536,
+        "iterations": 3,
+        "parallelism": 1,
+        "length": 32,
+        "provider": "libsodium-crypto_pwhash-argon2id13"
+      },
+      "expect": {
+        "result": "success",
+        "output": "def6fd068289b9a0cf1114f8e978a2c4dab6faef377d895b9c2d59fc93fc5653"
+      }
+    },
+    {
+      "id": "password-utf8-multibyte-nul",
+      "operation": "password-utf8",
+      "input": {
+        "text": "A\u0000é🔐"
+      },
+      "parameters": {
+        "normalization": "none",
+        "maximumBytes": 1024
+      },
+      "expect": {
+        "result": "success",
+        "output": "4100c3a9f09f9490"
+      }
+    },
+    {
+      "id": "password-utf8-reject-unpaired-surrogate",
+      "operation": "password-utf8-reject",
+      "input": {
+        "text": "\ud800"
+      },
+      "parameters": {},
+      "expect": {
+        "result": "reject",
+        "error": "invalid-password-encoding"
+      }
+    },
+    {
+      "id": "reject-unknown-envelope-version",
+      "operation": "envelope-reject",
+      "input": {
+        "envelope": "4e54524e020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "parameters": {},
+      "expect": { "result": "reject", "error": "unsupported-version" }
+    },
+    {
+      "id": "reject-truncated-header",
+      "operation": "envelope-reject",
+      "input": { "envelope": "4e54524e01" },
+      "parameters": {},
+      "expect": { "result": "reject", "error": "structure" }
+    }
+  ]
+}

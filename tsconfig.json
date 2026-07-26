@@ -1,0 +1,16 @@
+{
+  "files": [],
+  "references": [
+    { "path": "apps/api" },
+    { "path": "apps/web" },
+    { "path": "infra/cloudflare" },
+    { "path": "infra/self-hosted" },
+    { "path": "packages/crypto" },
+    { "path": "packages/import-export" },
+    { "path": "packages/protocol" },
+    { "path": "packages/sync-engine" },
+    { "path": "packages/test-vectors" },
+    { "path": "packages/ui" },
+    { "path": "packages/vault-domain" }
+  ]
+}

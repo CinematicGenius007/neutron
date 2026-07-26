@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neutron.example/schema/crypto-envelope-v1.schema.json",
+  "title": "Neutron crypto envelope vectors draft v1",
+  "$comment": "Draft only: Task 0005 owns executable schema validation, fixture lifecycle, completeness, and immutability. JSON parsing is not validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "cases"],
+  "properties": {
+    "format": { "const": "neutron-crypto-vectors/draft-1" },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/case" }
+    }
+  },
+  "$defs": {
+    "hex": {
+      "type": "string",
+      "pattern": "^(?:[0-9a-f]{2})*$"
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "operation", "expect"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,79}$" },
+        "operation": {
+          "enum": [
+            "hkdf-sha256",
+            "argon2id",
+            "password-utf8",
+            "password-utf8-reject",
+            "envelope-encrypt",
+            "envelope-decrypt",
+            "envelope-reject"
+          ]
+        },
+        "input": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string" }
+          },
+          "additionalProperties": { "$ref": "#/$defs/hex" }
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["integer", "string", "boolean"]
+          }
+        },
+        "expect": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["result"],
+          "properties": {
+            "result": { "enum": ["success", "reject"] },
+            "output": { "$ref": "#/$defs/hex" },
+            "error": {
+              "enum": [
+                "structure",
+                "unsupported-version",
+                "unsupported-suite",
+                "unknown-critical-field",
+                "bounds",
+                "kdf-policy",
+                "authentication",
+                "padding",
+                "invalid-password-encoding",
+                "password-length"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "result": { "const": "success" } } },
+              "then": { "required": ["output"] }
+            },
+            {
+              "if": { "properties": { "result": { "const": "reject" } } },
+              "then": { "required": ["error"] }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

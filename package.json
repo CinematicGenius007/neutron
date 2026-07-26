@@ -1,0 +1,23 @@
+{
+  "name": "neutron",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@11.10.0",
+  "engines": {
+    "node": "26.5.0",
+    "pnpm": "11.10.0"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "format": "biome format --write .",
+    "format:check": "biome check .",
+    "lint": "biome lint .",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --build --pretty false"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.5",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

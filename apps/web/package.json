@@ -1,0 +1,14 @@
+{
+  "name": "@neutron/web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@neutron/import-export": "workspace:*",
+    "@neutron/sync-engine": "workspace:*",
+    "@neutron/ui": "workspace:*",
+    "@neutron/vault-domain": "workspace:*"
+  }
+}

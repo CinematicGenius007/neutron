@@ -1,0 +1,11 @@
+{
+  "name": "@neutron/protocol",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@neutron/crypto": "workspace:*"
+  }
+}

@@ -11,6 +11,7 @@ import {
   isUint64,
   loadValidatedCatalog,
   loadValidatedPendingManifest,
+  type StateGenerationRequest,
   uint64DecimalPattern,
   type ValidatedCatalog,
   type VectorCatalog,
@@ -19,6 +20,7 @@ import {
   verifyCatalog,
 } from "../src/index.js";
 import * as isolatedIndex from "../src/index.js?isolated";
+import { portableReferenceVerifier } from "./portable-reference-verifier.js";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const fixturePath = join(packageRoot, "fixtures/crypto-envelope-v1.json");
@@ -27,6 +29,25 @@ const pendingPath = join(packageRoot, "requirements/crypto-envelope-v1.pending.j
 const pendingSchemaPath = join(packageRoot, "schema/crypto-envelope-v1.pending.schema.json");
 const digestPath = join(packageRoot, "fixtures/crypto-envelope-v1.sha256");
 const repositoryRoot = join(packageRoot, "..", "..");
+const maxUint64 = 0xffff_ffff_ffff_ffffn;
+const maxBlobGeneration = 16_777_215n;
+
+function executeStateGeneration(request: StateGenerationRequest): VectorObservation {
+  if (request.input.action === "validate") {
+    const candidate = BigInt(request.input.candidateGeneration);
+    const minimum = request.input.kind === "blob" ? 0n : 1n;
+    const maximum = request.input.kind === "blob" ? maxBlobGeneration : maxUint64;
+    return candidate < minimum || candidate > maximum
+      ? { outcome: "reject", error: "bounds" }
+      : { outcome: "success", state: { generation: candidate.toString() } };
+  }
+  const current = BigInt(request.input.currentGeneration);
+  if (current === maxUint64) return { outcome: "reject", error: "bounds" };
+  const successor = current + 1n;
+  return request.input.kind === "blob" && successor > maxBlobGeneration
+    ? { outcome: "reject", error: "bounds" }
+    : { outcome: "success", state: { generation: successor.toString() } };
+}
 
 async function loadJson(path: string): Promise<unknown> {
   return JSON.parse(await readFile(path, "utf8")) as unknown;
@@ -57,6 +78,13 @@ function firstCase(raw: unknown): Record<string, unknown> {
 }
 
 describe("crypto-envelope v1 executable catalog", () => {
+  it("verifies every executable vector through the independent portable adapter", async () => {
+    const catalog = await loadCatalog();
+    const results = await verifyCatalog(catalog, portableReferenceVerifier);
+    expect(results).toHaveLength(83);
+    expect(results.filter(({ passed }) => !passed)).toEqual([]);
+  }, 30_000);
+
   it("validates the executable catalog and separate pending manifest", async () => {
     const [catalog, pending, validateCatalog, validatePending] = await Promise.all([
       loadJson(fixturePath),
@@ -85,10 +113,10 @@ describe("crypto-envelope v1 executable catalog", () => {
         requiredOutcome: string;
       }>;
     };
-    expect(executable.cases).toHaveLength(19);
-    expect(requirements.requirements).toHaveLength(32);
+    expect(executable.cases).toHaveLength(83);
+    expect(requirements.requirements).toHaveLength(5);
     expect(requirements.requirements.filter(({ ownerTask }) => ownerTask === "0005")).toHaveLength(
-      27,
+      0,
     );
     expect(requirements.requirements.filter(({ ownerTask }) => ownerTask === "0010")).toHaveLength(
       5,
@@ -119,7 +147,7 @@ describe("crypto-envelope v1 executable catalog", () => {
           ({ originatingRequirementId }) => originatingRequirementId,
         ),
       ).size,
-    ).toBe(42);
+    ).toBe(77);
     expect(executable.cases.filter(({ operation }) => operation === "hkdf-sha256")).toHaveLength(1);
     expect(executable.cases.filter(({ operation }) => operation === "argon2id")).toHaveLength(1);
     expect(
@@ -127,10 +155,10 @@ describe("crypto-envelope v1 executable catalog", () => {
     ).toHaveLength(6);
     expect(
       requirements.requirements.filter(({ requiredOutcome }) => requiredOutcome === "success"),
-    ).toHaveLength(13);
+    ).toHaveLength(2);
     expect(
       requirements.requirements.filter(({ requiredOutcome }) => requiredOutcome === "reject"),
-    ).toHaveLength(19);
+    ).toHaveLength(3);
     const countByOperationAndOutcome = <T extends { operation: string }>(
       entries: readonly (T & { outcome?: string; requiredOutcome?: string })[],
     ) =>
@@ -157,12 +185,13 @@ describe("crypto-envelope v1 executable catalog", () => {
       "hkdf-sha256": { success: 1, reject: 0 },
       argon2id: { success: 1, reject: 0 },
       "password-encoding": { success: 3, reject: 3 },
-      "state-generation": { success: 7, reject: 4 },
+      "state-generation": { success: 8, reject: 5 },
+      envelope: { success: 9, reject: 49 },
+      migration: { success: 2, reject: 2 },
     });
     expect(countByOperationAndOutcome(requirements.requirements)).toEqual({
-      envelope: { success: 9, reject: 14 },
       "state-generation": { success: 0, reject: 1 },
-      migration: { success: 4, reject: 4 },
+      migration: { success: 2, reject: 2 },
     });
     expect(JSON.stringify(pending)).not.toContain('"expect"');
   });
@@ -203,12 +232,16 @@ describe("crypto-envelope v1 executable catalog", () => {
     firstInvalidOutcome.requiredOutcome = "unknown";
     expect(validatePending(invalidOutcome)).toBe(false);
     const wrongStage = structuredClone(pending) as {
-      requirements: Array<{ blockingStage: string; dependency: string | null }>;
+      requirements: Array<{
+        ownerTask: string;
+        blockingStage: string;
+        dependency: string | null;
+      }>;
     };
     const firstWrongStage = wrongStage.requirements[0];
     if (firstWrongStage === undefined) throw new Error("pending requirement missing");
-    firstWrongStage.blockingStage = "stage-3";
-    firstWrongStage.dependency = "0004";
+    firstWrongStage.blockingStage = "stage-1";
+    firstWrongStage.dependency = null;
     expect(validatePending(wrongStage)).toBe(false);
   });
 
@@ -257,7 +290,6 @@ describe("crypto-envelope v1 executable catalog", () => {
             operation: "state-generation",
             input: {
               action: "validate",
-              currentGeneration: "0",
               candidateGeneration: value,
               kind: "root",
             },
@@ -280,7 +312,6 @@ describe("crypto-envelope v1 executable catalog", () => {
             operation: "state-generation",
             input: {
               action: "validate",
-              currentGeneration: "0",
               candidateGeneration: value,
               kind: "root",
             },
@@ -337,7 +368,6 @@ describe("crypto-envelope v1 executable catalog", () => {
           candidate.originatingRequirementId = "generation-root-initial";
           candidate.input = {
             action: "validate",
-            currentGeneration: "0",
             candidateGeneration: 9007199254740992,
             kind: "root",
           };
@@ -366,12 +396,9 @@ describe("crypto-envelope v1 executable catalog", () => {
       operation: "envelope",
       input: {
         envelope: "00",
-        header: "00".repeat(72),
-        key: "00".repeat(32),
-        nonce: "00".repeat(24),
-        salt: "",
+        keySource: { source: "parent", parentKey: "00".repeat(32) },
       },
-      parameters: { accountId: "11".repeat(16), objectId: "22".repeat(16) },
+      parameters: {},
       expect: { outcome: "reject", error: "structure" },
     };
     const candidateCatalog = (vector: typeof base) => ({
@@ -382,11 +409,11 @@ describe("crypto-envelope v1 executable catalog", () => {
     expect(validate(candidateCatalog(base)), JSON.stringify(validate.errors)).toBe(true);
     for (const [name, mutate] of [
       ["empty envelope", (value: typeof base) => (value.input.envelope = "")],
-      ["wrong envelope key", (value: typeof base) => (value.input.key = "00")],
-      ["wrong envelope nonce", (value: typeof base) => (value.input.nonce = "00")],
-      ["wrong envelope salt", (value: typeof base) => (value.input.salt = "00")],
-      ["wrong envelope header", (value: typeof base) => (value.input.header = "00")],
-      ["wrong account ID", (value: typeof base) => (value.parameters.accountId = "00")],
+      ["wrong parent key", (value: typeof base) => (value.input.keySource.parentKey = "00")],
+      [
+        "unknown key-source field",
+        (value: typeof base) => ((value.input.keySource as Record<string, string>).extra = "00"),
+      ],
       [
         "unknown envelope field",
         (value: typeof base) => ((value.input as Record<string, string>).extra = "00"),
@@ -409,6 +436,24 @@ describe("crypto-envelope v1 executable catalog", () => {
         validate(candidateCatalog(candidate)),
         `${name}: ${JSON.stringify(validate.errors)}`,
       ).toBe(false);
+    }
+
+    const repeatedEnvelopeOutput = structuredClone(base) as typeof base & {
+      expect: { outcome: string; output?: unknown; error?: string };
+    };
+    repeatedEnvelopeOutput.expect = {
+      outcome: "success",
+      output: { repeatByte: "00", repeatCount: 1 },
+    };
+    expect(validate(candidateCatalog(repeatedEnvelopeOutput))).toBe(false);
+
+    for (const password of ["", "61".repeat(1025)]) {
+      const passwordEnvelope = structuredClone(base) as typeof base;
+      passwordEnvelope.input.keySource = {
+        source: "password",
+        password,
+      } as unknown as typeof passwordEnvelope.input.keySource;
+      expect(validate(candidateCatalog(passwordEnvelope))).toBe(false);
     }
   });
 
@@ -459,7 +504,7 @@ describe("crypto-envelope v1 executable catalog", () => {
       ({ operation }) => operation === "state-generation",
     );
     expect(passwordBoundary).toHaveLength(2);
-    expect(generations).toHaveLength(11);
+    expect(generations).toHaveLength(13);
     const selected = await validatedSubset(catalog.catalog, passwordBoundary);
     await expect(
       verifyCatalog(selected, {
@@ -472,17 +517,46 @@ describe("crypto-envelope v1 executable catalog", () => {
       { id: "password-accept-1024-utf8-bytes", passed: true },
       { id: "password-reject-1025-utf8-bytes", passed: true },
     ]);
-    expect(generations.map(({ input }) => input.action)).toContain("validate");
-    expect(generations.map(({ input }) => input.action)).toContain("increment");
+    const generationCatalog = await validatedSubset(catalog.catalog, generations);
+    await expect(
+      verifyCatalog(generationCatalog, {
+        verify: (request) => {
+          if (request.operation !== "state-generation") throw new Error("unexpected operation");
+          return executeStateGeneration(request);
+        },
+      }),
+    ).resolves.toEqual(generations.map(({ id }) => ({ id, passed: true })));
+    expect(generations.map(({ id }) => id)).toContain("generation-root-successor");
+    expect(generations.map(({ id }) => id)).toContain("generation-reject-zero-root");
   });
 
-  it("compares canonical states independent of insertion order and rejects mismatches", () => {
-    expect(
-      canonicalStatesEqual(
-        { generation: "1", activeArkEpoch: "2" },
-        { activeArkEpoch: "2", generation: "1" },
-      ),
-    ).toBe(true);
+  it("rejects ambiguous state-generation action inputs", async () => {
+    const raw = (await loadJson(fixturePath)) as { cases: Array<Record<string, unknown>> };
+    const validate = await validator(schemaPath);
+    const rootInitial = raw.cases.find(({ id }) => id === "generation-root-initial");
+    const rootSuccessor = raw.cases.find(({ id }) => id === "generation-root-successor");
+    if (rootInitial === undefined || rootSuccessor === undefined)
+      throw new Error("generation vectors missing");
+
+    const validationWithCurrent = structuredClone(raw);
+    const validationTarget = validationWithCurrent.cases.find(
+      ({ id }) => id === "generation-root-initial",
+    );
+    if (validationTarget === undefined) throw new Error("generation vector missing");
+    (validationTarget.input as Record<string, unknown>).currentGeneration = "0";
+    expect(validate(validationWithCurrent), JSON.stringify(validate.errors)).toBe(false);
+
+    const incrementWithCandidate = structuredClone(raw);
+    const incrementTarget = incrementWithCandidate.cases.find(
+      ({ id }) => id === "generation-root-successor",
+    );
+    if (incrementTarget === undefined) throw new Error("generation vector missing");
+    (incrementTarget.input as Record<string, unknown>).candidateGeneration = "2";
+    expect(validate(incrementWithCandidate), JSON.stringify(validate.errors)).toBe(false);
+  });
+
+  it("compares the closed generation state and rejects mismatches", () => {
+    expect(canonicalStatesEqual({ generation: "1" }, { generation: "1" })).toBe(true);
     expect(
       canonicalStatesEqual({ generation: "1", activeArkEpoch: "2" }, { generation: "1" }),
     ).toBe(false);
@@ -507,7 +581,6 @@ describe("crypto-envelope v1 executable catalog", () => {
           operation: "state-generation",
           input: {
             action: "validate",
-            currentGeneration: "0",
             candidateGeneration: "1",
             kind: "root",
           },

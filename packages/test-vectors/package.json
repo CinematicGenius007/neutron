@@ -6,6 +6,8 @@
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
+    "generate:envelopes": "tsc --build && node scripts/write-envelope-candidates.mjs",
+    "test:browser": "vitest run --config test/vitest.browser.config.ts",
     "test:generate": "vitest run --config test/vitest.generator.config.ts"
   },
   "dependencies": {
@@ -14,6 +16,8 @@
   "devDependencies": {
     "@noble/ciphers": "2.2.0",
     "@noble/hashes": "2.2.0",
-    "ajv": "8.17.1"
+    "@vitest/browser-playwright": "4.1.10",
+    "ajv": "8.17.1",
+    "playwright": "1.62.0"
   }
 }

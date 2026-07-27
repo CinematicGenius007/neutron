@@ -71,32 +71,95 @@ export interface EnvelopeRequest {
   readonly operation: "envelope";
   readonly input: Readonly<{
     envelope: Hex;
-    header: Hex;
-    key: Hex;
-    nonce: Hex;
-    salt: Hex;
+    keySource:
+      | Readonly<{ source: "parent"; parentKey: Hex }>
+      | Readonly<{ source: "password"; password: Hex }>;
   }>;
-  readonly parameters: Readonly<{ accountId: Hex; objectId: Hex }>;
+  readonly parameters: Readonly<Record<never, never>>;
 }
 
-export interface StateGenerationRequest {
+export interface StateGenerationValidationRequest {
   readonly id: string;
   readonly operation: "state-generation";
   readonly input: Readonly<{
-    action: "increment" | "validate";
-    candidateGeneration: Uint64 | null;
+    action: "validate";
+    candidateGeneration: Uint64;
+    kind: "blob" | "index" | "item" | "root";
+  }>;
+  readonly parameters: Readonly<Record<never, never>>;
+}
+
+export interface StateGenerationIncrementRequest {
+  readonly id: string;
+  readonly operation: "state-generation";
+  readonly input: Readonly<{
+    action: "increment";
     currentGeneration: Uint64;
     kind: "blob" | "index" | "item" | "root";
   }>;
   readonly parameters: Readonly<Record<never, never>>;
 }
 
-export interface MigrationRequest {
+export type StateGenerationRequest =
+  | StateGenerationIncrementRequest
+  | StateGenerationValidationRequest;
+
+interface FullRotationObjectIds {
+  readonly mutation: Hex;
+  readonly vault: Hex;
+  readonly item: Hex;
+  readonly attachment: Hex;
+  readonly index: Hex;
+}
+
+interface FullRotationMaterials {
+  readonly mutation: Hex;
+  readonly vaultKey: Hex;
+  readonly itemKey: Hex;
+  readonly attachmentKey: Hex;
+  readonly itemPlaintext: Hex;
+  readonly blobPlaintext: Hex;
+  readonly indexPlaintext: Hex;
+}
+
+interface FullRotationNonces {
+  readonly mutationChild: Hex;
+  readonly vaultChild: Hex;
+  readonly itemWrapper: Hex;
+  readonly attachmentWrapper: Hex;
+  readonly itemPayload: Hex;
+  readonly blobPayload: Hex;
+  readonly indexPayload: Hex;
+}
+
+export interface MinimumMigrationRequest {
   readonly id: string;
   readonly operation: "migration";
-  readonly input: Readonly<{ oldState: Hex; oldArk: Hex; newArk: Hex }>;
-  readonly parameters: Readonly<{ newArkEpoch: Uint64 }>;
+  readonly input: Readonly<{
+    action: "minimum-child-rewrap";
+    oldArk: Hex;
+    newArk: Hex;
+    children: readonly Readonly<{ oldEnvelope: Hex; newNonce: Hex }>[];
+  }>;
+  readonly parameters: Readonly<Record<never, never>>;
 }
+
+export interface FullRotationRequest {
+  readonly id: string;
+  readonly operation: "migration";
+  readonly input: Readonly<{
+    action: "full-descendant-rotation";
+    accountId: Hex;
+    newArk: Hex;
+    newKeyVersion: number;
+    objectIds: Readonly<FullRotationObjectIds>;
+    materials: Readonly<FullRotationMaterials>;
+    nonces: Readonly<FullRotationNonces>;
+  }>;
+  readonly parameters: Readonly<Record<never, never>>;
+}
+
+export type MigrationRequest = FullRotationRequest | MinimumMigrationRequest;
 
 export type VectorRequest =
   | Argon2idRequest
@@ -118,8 +181,7 @@ export interface ByteOutputSuccess {
 }
 
 export type StateGenerationResult = Readonly<{ generation: Uint64 }>;
-export type MigrationResult = Readonly<{ activeArkEpoch: Uint64 }>;
-export type CanonicalStateResult = StateGenerationResult | MigrationResult;
+export type CanonicalStateResult = StateGenerationResult;
 
 export interface StateResultSuccess {
   readonly outcome: "success";
@@ -158,7 +220,11 @@ export interface PendingReference {
 
 export interface PendingRequirement {
   readonly id: string;
+  readonly originatingRequirementId: string;
   readonly operation: VectorOperation;
+  readonly ownerTask: "0005" | "0010";
+  readonly blockingStage: "stage-1" | "stage-3";
+  readonly dependency: "0004" | null;
   readonly references: readonly PendingReference[];
   readonly requiredInput: readonly string[];
   readonly requiredExpectedResult: readonly string[];
@@ -268,9 +334,7 @@ function isCanonicalState(value: unknown): value is CanonicalStateResult {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
   const keys = Object.keys(candidate);
-  if (keys.length < 1 || keys.length > 2) return false;
-  if (keys.some((key) => key !== "generation" && key !== "activeArkEpoch")) return false;
-  return keys.every((key) => isUint64(candidate[key]));
+  return keys.length === 1 && keys[0] === "generation" && isUint64(candidate.generation);
 }
 
 function isObservation(value: unknown): value is VectorObservation {

@@ -1,11 +1,11 @@
 # TASK 0005 — Test-vector and adversarial harness design
 
-Status: blocked
-Owner: unassigned
-Claimed: —
+Status: done
+Owner: `/root`
+Claimed: 2026-07-27T02:18:08Z
 Worktree/branch: shared-worktree (main)
-Reviewer: unassigned  
-Review claimed: —  
+Reviewer: `task_0005_final_reviewer`
+Review claimed: 2026-07-27T04:33:02Z
 Depends on: 0001, 0003  
 Blocks: Stage 1 crypto implementation  
 Security-sensitive: yes
@@ -34,15 +34,35 @@ persisted cryptographic operation and parser boundary.
 
 ## Acceptance criteria
 
-- [ ] Browser and Node harnesses consume the same immutable vectors. The catalog
-      remains a candidate pending concrete-vector completion and browser execution.
+- [x] Browser and Node harnesses consume the same immutable vectors. The catalog
+      remains a candidate until final independent review accepts it.
 - [x] Wrong key/AAD/version, mutation, truncation, extension, and oversized cases
       are represented.
 - [x] Fixtures are synthetic and contain no operational secrets.
 - [x] Vector generation is separated from vector verification.
-- [ ] Independent review is recorded.
+- [x] Independent review is recorded.
 
 ## Progress log
+
+- 2026-07-27T02:18:08Z — Orchestrator reclaimed Task 0005 after independent
+  review of `7d9447c` found one P1 and one P2. The bounded remediation will
+  define and execute the state-generation operation contract, add missing root
+  successor and invalid-transition coverage, synchronize exported pending
+  manifest types, then continue directly into concrete envelope/migration
+  candidate generation and real-browser execution.
+- 2026-07-27T04:33:02Z — Completed the Task-0005-owned catalog and moved the
+  task to independent review. The executable catalog now contains 83 exact
+  cases: 24 successes and 59 rejections, including 35 individual parser
+  hardening probes beyond the original grouped requirements. A generator-
+  independent portable Noble adapter verifies all cases in Node and real
+  Chromium. The pending manifest now contains only Task-0010 Stage-3 records.
+  Crypto migration outputs are exact envelope bundles and deliberately contain
+  no account-state activation result.
+- 2026-07-27T05:05:40Z — Remediated final-review findings: added exact-total-
+  length payload rejection cases for a 4,113-byte nonmultiple ciphertext and a
+  4,111-byte below-minimum ciphertext; restricted repeat-output recipes to
+  password vectors; and bounded envelope password key-source bytes to 1–1,024.
+  The catalog now has 83 cases and returns to the same independent reviewer.
 
 - 2026-07-26T00:00:00Z — Blocked on repository and envelope specification.
 - 2026-07-26T14:42:52Z — Dependencies are complete: TASK 0001 is done and TASK
@@ -125,13 +145,12 @@ persisted cryptographic operation and parser boundary.
 
 ## Handoff
 
-An independent reviewer should verify adapters cannot access expected values,
-including through object aliases; malformed observations and duplicate IDs fail;
-and `['a', 'b']` never compares equal to `['a\\u0000b']`. The next implementer
-must use the separate Noble generator to replace every scenario-only entry with
-concrete reviewed envelope bytes or base-vector-plus-mutation recipes before
-regenerating the catalog digest. Do not accept current representation tests as
-interoperability evidence.
+The final reviewer should attempt to disprove generator/verifier separation,
+every error-code precedence choice, exact envelope and migration bytes, the 33
+additional parser-boundary probes, and parity between Node and real Chromium.
+After PASS, freeze the recorded digest and unblock Stage 1 production-provider
+work. Task 0010 remains the sole owner of authenticated activation, live-child
+authority, stale/replay decisions, and mutation-signing public bindings.
 
 ## Verification
 
@@ -207,15 +226,43 @@ boundaries and all 11 envelope-local generation actions; and reject owner/stage/
 dependency schema violations. Browser execution remains unconfigured and is not
 claimed.
 
-Blocker: Task-0005-owned pending requirements must become exact reviewed
-envelope and cryptographic-migration bytes (or reviewed base-vector plus mutation
-recipes), and a real-browser runner must execute the committed executable
-catalog. Authenticated account-state requirements are deferred to Task 0010,
-which depends on Task 0004 and blocks Stage 3—not Stage 1. This is not a Stage 1
-production-provider dependency: `packages/test-vectors/src/reference-generator.ts`
-provides test-only primitive machinery.
+2026-07-27T04:33:02Z — Completion verification: `pnpm install
+--frozen-lockfile`, `pnpm test` (17 Node tests, including all 83 vectors),
+`pnpm --filter @neutron/test-vectors test:generate` (three separated generator
+tests), `pnpm --filter @neutron/test-vectors test:browser` (one real headless
+Chromium test over all 83 vectors), `pnpm typecheck`, `pnpm lint`, `pnpm
+format:check`, `pnpm build`, and `git diff --check` each exited 0. Browser
+execution used pinned `@vitest/browser-playwright@4.1.10`,
+  `playwright@1.62.0`, and Playwright Chromium v1234.
+  The complete recovery-root envelope was separately reproduced with
+  Node/OpenSSL HKDF-SHA-256 and native libsodium 1.0.22; both the derived key
+  and 51-byte ciphertext matched the committed candidate exactly.
+
+Blocker: none. Task 0010 retains the five authenticated-state requirements and
+blocks Stage 3, not Task 0005 or Stage 1.
 
 ## Review
+
+2026-07-27T05:05:40Z — FAIL pending remediation review —
+`task_0005_final_reviewer` found 0 P0, 1 P1, and 2 P2 after reproducing all
+Node/browser/security gates. The catalog omitted an exact-length nonmultiple
+payload bound; repeat-output recipes were overbroad; and envelope password
+bytes lacked the schema-level 1–1,024 bound. All three findings are remediated
+in the current review candidate.
+
+2026-07-27T05:19:56Z — PASS — `task_0005_final_reviewer` found 0 P0, 0 P1,
+and 0 P2 after remediation. It confirmed both exact-total payload length bounds,
+password-only repeat recipes, the 1–1,024-byte envelope password boundary, the
+83-case/24-success/59-rejection accounting, digest integrity, Node execution,
+generator anchors, and the orchestrator's real-Chromium execution. Task 0005 is
+done and Stage 1 production-provider work is unblocked.
+
+2026-07-27T02:18:08Z — FAIL — `task_0005_ownership_reviewer` found 0 P0, 1 P1,
+and 1 P2. The ownership split and all 42 originating-requirement mappings are
+correct, but the 11 state-generation records were counted rather than executed,
+their action semantics were underdefined, and root successor coverage was
+missing. The exported pending-manifest type also omitted four schema-required
+ownership fields. Task returned to active for remediation.
 
 2026-07-26T15:26:49Z — FAIL — `task_0005_reviewer` found no P0 and four P1
 findings: expectation echoing, scenario-only vectors, an underconstrained schema,

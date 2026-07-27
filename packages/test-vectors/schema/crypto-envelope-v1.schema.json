@@ -15,10 +15,34 @@
     "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,79}$" },
     "hex": { "type": "string", "pattern": "^(?:[0-9a-f]{2})*$" },
     "nonEmptyHex": { "type": "string", "pattern": "^(?:[0-9a-f]{2})+$" },
+    "passwordBytes": { "type": "string", "pattern": "^(?:[0-9a-f]{2}){1,1024}$" },
     "bytes16": { "type": "string", "pattern": "^(?:[0-9a-f]{2}){16}$" },
     "bytes24": { "type": "string", "pattern": "^(?:[0-9a-f]{2}){24}$" },
     "bytes32": { "type": "string", "pattern": "^(?:[0-9a-f]{2}){32}$" },
+    "bytes1to128": { "type": "string", "pattern": "^(?:[0-9a-f]{2}){1,128}$" },
     "bytes72": { "type": "string", "pattern": "^(?:[0-9a-f]{2}){72}$" },
+    "envelopeKeySource": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "password"],
+          "properties": {
+            "source": { "const": "password" },
+            "password": { "$ref": "#/$defs/passwordBytes" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "parentKey"],
+          "properties": {
+            "source": { "const": "parent" },
+            "parentKey": { "$ref": "#/$defs/bytes32" }
+          }
+        }
+      ]
+    },
     "uint64": {
       "type": "string",
       "pattern": "^(?:0|[1-9][0-9]{0,18}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]|1844674407370955161[0-5])$"
@@ -66,6 +90,15 @@
         }
       }
     },
+    "exactByteSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "output"],
+      "properties": {
+        "outcome": { "const": "success" },
+        "output": { "$ref": "#/$defs/hex" }
+      }
+    },
     "stateGenerationSuccess": {
       "type": "object",
       "additionalProperties": false,
@@ -80,20 +113,6 @@
         }
       }
     },
-    "migrationSuccess": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["outcome", "state"],
-      "properties": {
-        "outcome": { "const": "success" },
-        "state": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["activeArkEpoch"],
-          "properties": { "activeArkEpoch": { "$ref": "#/$defs/uint64" } }
-        }
-      }
-    },
     "rejection": {
       "type": "object",
       "additionalProperties": false,
@@ -104,7 +123,6 @@
       "oneOf": [
         { "$ref": "#/$defs/byteSuccess" },
         { "$ref": "#/$defs/stateGenerationSuccess" },
-        { "$ref": "#/$defs/migrationSuccess" },
         { "$ref": "#/$defs/rejection" }
       ]
     },
@@ -132,7 +150,7 @@
           "required": ["length"],
           "properties": { "length": { "type": "integer", "minimum": 1, "maximum": 8160 } }
         },
-        "expect": { "$ref": "#/$defs/byteSuccess" }
+        "expect": { "$ref": "#/$defs/exactByteSuccess" }
       }
     },
     "argon2id": {
@@ -165,7 +183,7 @@
             "provider": { "const": "libsodium-crypto-pwhash-argon2id13" }
           }
         },
-        "expect": { "$ref": "#/$defs/byteSuccess" }
+        "expect": { "$ref": "#/$defs/exactByteSuccess" }
       }
     },
     "passwordUnicodeScalars": {
@@ -247,27 +265,16 @@
         "input": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["envelope", "header", "key", "nonce", "salt"],
+          "required": ["envelope", "keySource"],
           "properties": {
             "envelope": { "$ref": "#/$defs/nonEmptyHex" },
-            "header": { "$ref": "#/$defs/bytes72" },
-            "key": { "$ref": "#/$defs/bytes32" },
-            "nonce": { "$ref": "#/$defs/bytes24" },
-            "salt": {
-              "oneOf": [{ "const": "" }, { "$ref": "#/$defs/bytes16" }]
-            }
+            "keySource": { "$ref": "#/$defs/envelopeKeySource" }
           }
         },
-        "parameters": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["accountId", "objectId"],
-          "properties": {
-            "accountId": { "$ref": "#/$defs/bytes16" },
-            "objectId": { "$ref": "#/$defs/bytes16" }
-          }
-        },
-        "expect": { "oneOf": [{ "$ref": "#/$defs/byteSuccess" }, { "$ref": "#/$defs/rejection" }] }
+        "parameters": { "type": "object", "additionalProperties": false },
+        "expect": {
+          "oneOf": [{ "$ref": "#/$defs/exactByteSuccess" }, { "$ref": "#/$defs/rejection" }]
+        }
       }
     },
     "stateGeneration": {
@@ -279,17 +286,28 @@
         "originatingRequirementId": { "$ref": "#/$defs/id" },
         "operation": { "const": "state-generation" },
         "input": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["action", "candidateGeneration", "currentGeneration", "kind"],
-          "properties": {
-            "action": { "enum": ["increment", "validate"] },
-            "candidateGeneration": {
-              "oneOf": [{ "$ref": "#/$defs/uint64" }, { "type": "null" }]
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["action", "candidateGeneration", "kind"],
+              "properties": {
+                "action": { "const": "validate" },
+                "candidateGeneration": { "$ref": "#/$defs/uint64" },
+                "kind": { "enum": ["blob", "index", "item", "root"] }
+              }
             },
-            "currentGeneration": { "$ref": "#/$defs/uint64" },
-            "kind": { "enum": ["blob", "index", "item", "root"] }
-          }
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["action", "currentGeneration", "kind"],
+              "properties": {
+                "action": { "const": "increment" },
+                "currentGeneration": { "$ref": "#/$defs/uint64" },
+                "kind": { "enum": ["blob", "index", "item", "root"] }
+              }
+            }
+          ]
         },
         "parameters": { "type": "object", "additionalProperties": false },
         "expect": {
@@ -306,23 +324,111 @@
         "originatingRequirementId": { "$ref": "#/$defs/id" },
         "operation": { "const": "migration" },
         "input": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["oldState", "oldArk", "newArk"],
-          "properties": {
-            "oldState": { "$ref": "#/$defs/nonEmptyHex" },
-            "oldArk": { "$ref": "#/$defs/bytes32" },
-            "newArk": { "$ref": "#/$defs/bytes32" }
-          }
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["action", "oldArk", "newArk", "children"],
+              "properties": {
+                "action": { "const": "minimum-child-rewrap" },
+                "oldArk": { "$ref": "#/$defs/bytes32" },
+                "newArk": { "$ref": "#/$defs/bytes32" },
+                "children": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 32,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["oldEnvelope", "newNonce"],
+                    "properties": {
+                      "oldEnvelope": { "$ref": "#/$defs/nonEmptyHex" },
+                      "newNonce": { "$ref": "#/$defs/bytes24" }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "action",
+                "accountId",
+                "newArk",
+                "newKeyVersion",
+                "objectIds",
+                "materials",
+                "nonces"
+              ],
+              "properties": {
+                "action": { "const": "full-descendant-rotation" },
+                "accountId": { "$ref": "#/$defs/bytes16" },
+                "newArk": { "$ref": "#/$defs/bytes32" },
+                "newKeyVersion": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+                "objectIds": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["mutation", "vault", "item", "attachment", "index"],
+                  "properties": {
+                    "mutation": { "$ref": "#/$defs/bytes16" },
+                    "vault": { "$ref": "#/$defs/bytes16" },
+                    "item": { "$ref": "#/$defs/bytes16" },
+                    "attachment": { "$ref": "#/$defs/bytes16" },
+                    "index": { "$ref": "#/$defs/bytes16" }
+                  }
+                },
+                "materials": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "mutation",
+                    "vaultKey",
+                    "itemKey",
+                    "attachmentKey",
+                    "itemPlaintext",
+                    "blobPlaintext",
+                    "indexPlaintext"
+                  ],
+                  "properties": {
+                    "mutation": { "$ref": "#/$defs/bytes1to128" },
+                    "vaultKey": { "$ref": "#/$defs/bytes32" },
+                    "itemKey": { "$ref": "#/$defs/bytes32" },
+                    "attachmentKey": { "$ref": "#/$defs/bytes32" },
+                    "itemPlaintext": { "$ref": "#/$defs/hex" },
+                    "blobPlaintext": { "$ref": "#/$defs/hex" },
+                    "indexPlaintext": { "$ref": "#/$defs/hex" }
+                  }
+                },
+                "nonces": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "mutationChild",
+                    "vaultChild",
+                    "itemWrapper",
+                    "attachmentWrapper",
+                    "itemPayload",
+                    "blobPayload",
+                    "indexPayload"
+                  ],
+                  "properties": {
+                    "mutationChild": { "$ref": "#/$defs/bytes24" },
+                    "vaultChild": { "$ref": "#/$defs/bytes24" },
+                    "itemWrapper": { "$ref": "#/$defs/bytes24" },
+                    "attachmentWrapper": { "$ref": "#/$defs/bytes24" },
+                    "itemPayload": { "$ref": "#/$defs/bytes24" },
+                    "blobPayload": { "$ref": "#/$defs/bytes24" },
+                    "indexPayload": { "$ref": "#/$defs/bytes24" }
+                  }
+                }
+              }
+            }
+          ]
         },
-        "parameters": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["newArkEpoch"],
-          "properties": { "newArkEpoch": { "$ref": "#/$defs/uint64" } }
-        },
+        "parameters": { "type": "object", "additionalProperties": false },
         "expect": {
-          "oneOf": [{ "$ref": "#/$defs/migrationSuccess" }, { "$ref": "#/$defs/rejection" }]
+          "oneOf": [{ "$ref": "#/$defs/exactByteSuccess" }, { "$ref": "#/$defs/rejection" }]
         }
       }
     },

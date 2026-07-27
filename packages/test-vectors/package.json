@@ -8,9 +8,11 @@
   "scripts": {
     "generate:envelopes": "tsc --build && node scripts/write-envelope-candidates.mjs",
     "test:browser": "vitest run --config test/vitest.browser.config.ts",
-    "test:generate": "vitest run --config test/vitest.generator.config.ts"
+    "test:generate": "vitest run --config test/vitest.generator.config.ts",
+    "test:production": "vitest run --config test/vitest.production.config.ts"
   },
   "dependencies": {
+    "@neutron/crypto": "workspace:*",
     "@neutron/protocol": "workspace:*"
   },
   "devDependencies": {

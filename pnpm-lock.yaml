@@ -99,6 +99,9 @@ importers:
 
   packages/test-vectors:
     dependencies:
+      '@neutron/crypto':
+        specifier: workspace:*
+        version: link:../crypto
       '@neutron/protocol':
         specifier: workspace:*
         version: link:../protocol

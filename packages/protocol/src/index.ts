@@ -9,6 +9,7 @@ export {
   type KeyMaterialType,
   type OpenedEnvelope,
   openEnvelope,
+  parseEnvelopeHeader as parseUnauthenticatedEnvelopeHeader,
   sealEnvelope,
 } from "./envelope.js";
 export { EnvelopeFailure, type EnvelopeFailureCode } from "./errors.js";

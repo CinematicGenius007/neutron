@@ -5,10 +5,17 @@
   "type": "module",
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "scripts": {
+    "test:browser": "vitest run --config test/vitest.browser.config.ts"
+  },
   "dependencies": {
     "@neutron/import-export": "workspace:*",
     "@neutron/sync-engine": "workspace:*",
     "@neutron/ui": "workspace:*",
     "@neutron/vault-domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@vitest/browser-playwright": "4.1.10",
+    "playwright": "1.62.0"
   }
 }

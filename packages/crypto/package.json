@@ -4,5 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "exports": "./dist/index.js",
-  "types": "./dist/index.d.ts"
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "test:browser": "vitest run --config test/vitest.browser.config.ts"
+  },
+  "dependencies": {
+    "libsodium-wrappers-sumo": "0.8.4"
+  },
+  "devDependencies": {
+    "@vitest/browser-playwright": "4.1.10",
+    "ajv": "8.17.1",
+    "playwright": "1.62.0"
+  }
 }

@@ -113,6 +113,15 @@ persisted cryptographic operation and parser boundary.
   IDs, pending-ID uniqueness, outcome-derived counts, and reference resolution.
   The task returns to blocked: concrete reviewed envelope/migration material and
   real-browser execution remain out of scope blockers.
+- 2026-07-27T02:05:51Z — Resolved the coordination finding from the independent
+  review of `720c440`. The catalog now has 19 executable vectors (including the
+  two password-size boundaries and 11 envelope-local generation actions). The
+  pending manifest has 27 Task-0005 Stage-1 records and five Task-0010 Stage-3
+  records, with schema-enforced owner/stage/dependency metadata and 42 unique
+  originating requirement IDs. Task 0010 records authenticated stale/replay,
+  live-child-set, atomic-activation, and public-binding vector work after Task
+  0004. Task 0005 remains blocked only on its own concrete envelope and
+  cryptographic-migration vectors plus real-browser execution.
 
 ## Handoff
 
@@ -188,12 +197,23 @@ The uint64 schema/runtime boundary accepts 0, 1, `18446744073709551614`, and
 exponent-form, over-limit, and JSON-number inputs. The reference test resolved
 all pending document/heading pairs against the current Markdown sources.
 
-Blocker: the schema/catalog split is complete, but pending requirements must
-become exact reviewed envelope and migration bytes (or reviewed base-vector plus
-mutation recipes), and a real-browser runner must execute the committed
-executable catalog. This is not a Stage 1 production-provider dependency:
-`packages/test-vectors/src/reference-generator.ts` provides test-only primitive
-machinery.
+2026-07-27T02:05:51Z — `pnpm install --frozen-lockfile`, `pnpm test` (one file,
+15 tests), `pnpm --filter @neutron/test-vectors test:generate` (one generator
+test; HKDF, Argon2id, and XChaCha anchors unchanged), `pnpm typecheck`, `pnpm
+lint`, `pnpm format:check`, `pnpm build`, and `git diff --check` each exited 0.
+Tests derive executable, Stage-1-pending, Stage-3-deferred, outcome, and
+originating-ID counts from validated fixture data; validate both password byte
+boundaries and all 11 envelope-local generation actions; and reject owner/stage/
+dependency schema violations. Browser execution remains unconfigured and is not
+claimed.
+
+Blocker: Task-0005-owned pending requirements must become exact reviewed
+envelope and cryptographic-migration bytes (or reviewed base-vector plus mutation
+recipes), and a real-browser runner must execute the committed executable
+catalog. Authenticated account-state requirements are deferred to Task 0010,
+which depends on Task 0004 and blocks Stage 3—not Stage 1. This is not a Stage 1
+production-provider dependency: `packages/test-vectors/src/reference-generator.ts`
+provides test-only primitive machinery.
 
 ## Review
 
@@ -219,3 +239,9 @@ P1, and 2 P2: uint64 overflow accepted by schema/runtime regex, order-sensitive
 canonical-state comparison, echoable pre-encoded password inputs, stale pending
 references, and prose-only pending outcomes. This remediation is limited to
 those findings.
+
+2026-07-27T01:57:04Z — PASS with coordination follow-up — independent review
+of `720c440` found all bounded code/security remediation passing, but identified
+one P1: the Task 0005 blocker omitted password/state work and left Task-0004
+authenticated-state ownership implicit. This follow-up remediates only that
+coordination finding.

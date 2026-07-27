@@ -46,7 +46,9 @@ export interface Argon2idRequest {
 export interface PasswordUnicodeScalarsRequest {
   readonly id: string;
   readonly operation: "password-encoding";
-  readonly input: Readonly<{ scalars: readonly number[] }>;
+  readonly input:
+    | Readonly<{ scalars: readonly number[] }>
+    | Readonly<{ repeatScalar: number; repeatCount: number }>;
   readonly parameters: Readonly<{
     source: "unicode-scalars";
     encoding: "utf8";
@@ -80,8 +82,13 @@ export interface EnvelopeRequest {
 export interface StateGenerationRequest {
   readonly id: string;
   readonly operation: "state-generation";
-  readonly input: Readonly<{ kind: number; generation: Uint64 }>;
-  readonly parameters: Readonly<{ previousGeneration: Uint64 }>;
+  readonly input: Readonly<{
+    action: "increment" | "validate";
+    candidateGeneration: Uint64 | null;
+    currentGeneration: Uint64;
+    kind: "blob" | "index" | "item" | "root";
+  }>;
+  readonly parameters: Readonly<Record<never, never>>;
 }
 
 export interface MigrationRequest {
@@ -100,9 +107,14 @@ export type VectorRequest =
   | PasswordUtf16BeRequest
   | StateGenerationRequest;
 
+export interface RepeatedHexOutput {
+  readonly repeatByte: Hex;
+  readonly repeatCount: number;
+}
+
 export interface ByteOutputSuccess {
   readonly outcome: "success";
-  readonly output: Hex;
+  readonly output: Hex | RepeatedHexOutput;
 }
 
 export type StateGenerationResult = Readonly<{ generation: Uint64 }>;
@@ -120,9 +132,15 @@ export interface VectorRejection {
 }
 
 export type VectorExpectation = ByteOutputSuccess | StateResultSuccess | VectorRejection;
-export type VectorObservation = VectorExpectation;
+export type VectorObservation =
+  | Readonly<{ outcome: "success"; output: Hex }>
+  | StateResultSuccess
+  | VectorRejection;
 
-export type VectorCase = VectorRequest & { readonly expect: VectorExpectation };
+export type VectorCase = VectorRequest & {
+  readonly expect: VectorExpectation;
+  readonly originatingRequirementId: string;
+};
 
 export interface VectorCatalog {
   readonly cases: readonly VectorCase[];
@@ -303,7 +321,7 @@ function compare(vector: VectorCase, value: unknown): VerificationResult {
       : { id: vector.id, passed: false, reason: "error" };
   if (expected.outcome === "success" && value.outcome === "success") {
     if ("output" in expected && "output" in value)
-      return expected.output === value.output
+      return outputMatches(expected.output, value.output)
         ? { id: vector.id, passed: true }
         : { id: vector.id, passed: false, reason: "output" };
     if ("state" in expected && "state" in value)
@@ -314,8 +332,22 @@ function compare(vector: VectorCase, value: unknown): VerificationResult {
   return { id: vector.id, passed: false, reason: "result-kind" };
 }
 
+function outputMatches(expected: ByteOutputSuccess["output"], observed: string): boolean {
+  if (typeof expected === "string") return expected === observed;
+  return (
+    expected.repeatByte.length === 2 &&
+    expected.repeatCount >= 0 &&
+    observed.length === expected.repeatCount * 2 &&
+    observed === expected.repeatByte.repeat(expected.repeatCount)
+  );
+}
+
 function requestOf(vector: VectorCase): VectorRequest {
-  const { expect: _expect, ...request } = vector;
+  const {
+    expect: _expect,
+    originatingRequirementId: _originatingRequirementId,
+    ...request
+  } = vector;
   return deepFreeze(structuredClone(request) as VectorRequest);
 }
 

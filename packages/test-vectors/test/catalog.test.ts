@@ -67,13 +67,45 @@ describe("crypto-envelope v1 executable catalog", () => {
     expect(validateCatalog(catalog), JSON.stringify(validateCatalog.errors)).toBe(true);
     expect(validatePending(pending), JSON.stringify(validatePending.errors)).toBe(true);
     const executable = catalog as {
-      cases: Array<{ id: string; operation: string; expect: { outcome: string } }>;
+      cases: Array<{
+        id: string;
+        operation: string;
+        originatingRequirementId: string;
+        expect: { outcome: string };
+      }>;
     };
     const requirements = pending as {
-      requirements: Array<{ id: string; operation: string; requiredOutcome: string }>;
+      requirements: Array<{
+        id: string;
+        operation: string;
+        originatingRequirementId: string;
+        ownerTask: string;
+        blockingStage: string;
+        dependency: string | null;
+        requiredOutcome: string;
+      }>;
     };
-    expect(executable.cases).toHaveLength(6);
-    expect(requirements.requirements).toHaveLength(36);
+    expect(executable.cases).toHaveLength(19);
+    expect(requirements.requirements).toHaveLength(32);
+    expect(requirements.requirements.filter(({ ownerTask }) => ownerTask === "0005")).toHaveLength(
+      27,
+    );
+    expect(requirements.requirements.filter(({ ownerTask }) => ownerTask === "0010")).toHaveLength(
+      5,
+    );
+    for (const requirement of requirements.requirements) {
+      if (requirement.ownerTask === "0005") {
+        expect({ stage: requirement.blockingStage, dependency: requirement.dependency }).toEqual({
+          stage: "stage-1",
+          dependency: null,
+        });
+      } else {
+        expect({ stage: requirement.blockingStage, dependency: requirement.dependency }).toEqual({
+          stage: "stage-3",
+          dependency: "0004",
+        });
+      }
+    }
     expect(() =>
       loadValidatedPendingManifest(
         pending,
@@ -82,19 +114,23 @@ describe("crypto-envelope v1 executable catalog", () => {
       ),
     ).not.toThrow();
     expect(
-      new Set([...executable.cases, ...requirements.requirements].map(({ id }) => id)).size,
+      new Set(
+        [...executable.cases, ...requirements.requirements].map(
+          ({ originatingRequirementId }) => originatingRequirementId,
+        ),
+      ).size,
     ).toBe(42);
     expect(executable.cases.filter(({ operation }) => operation === "hkdf-sha256")).toHaveLength(1);
     expect(executable.cases.filter(({ operation }) => operation === "argon2id")).toHaveLength(1);
     expect(
       executable.cases.filter(({ operation }) => operation === "password-encoding"),
-    ).toHaveLength(4);
+    ).toHaveLength(6);
     expect(
       requirements.requirements.filter(({ requiredOutcome }) => requiredOutcome === "success"),
-    ).toHaveLength(14);
+    ).toHaveLength(13);
     expect(
       requirements.requirements.filter(({ requiredOutcome }) => requiredOutcome === "reject"),
-    ).toHaveLength(22);
+    ).toHaveLength(19);
     const countByOperationAndOutcome = <T extends { operation: string }>(
       entries: readonly (T & { outcome?: string; requiredOutcome?: string })[],
     ) =>
@@ -120,13 +156,13 @@ describe("crypto-envelope v1 executable catalog", () => {
     ).toEqual({
       "hkdf-sha256": { success: 1, reject: 0 },
       argon2id: { success: 1, reject: 0 },
-      "password-encoding": { success: 2, reject: 2 },
+      "password-encoding": { success: 3, reject: 3 },
+      "state-generation": { success: 7, reject: 4 },
     });
     expect(countByOperationAndOutcome(requirements.requirements)).toEqual({
-      "password-encoding": { success: 1, reject: 1 },
       envelope: { success: 9, reject: 14 },
-      "state-generation": { success: 2, reject: 3 },
-      migration: { success: 2, reject: 4 },
+      "state-generation": { success: 0, reject: 1 },
+      migration: { success: 4, reject: 4 },
     });
     expect(JSON.stringify(pending)).not.toContain('"expect"');
   });
@@ -166,6 +202,14 @@ describe("crypto-envelope v1 executable catalog", () => {
     if (firstInvalidOutcome === undefined) throw new Error("pending requirement missing");
     firstInvalidOutcome.requiredOutcome = "unknown";
     expect(validatePending(invalidOutcome)).toBe(false);
+    const wrongStage = structuredClone(pending) as {
+      requirements: Array<{ blockingStage: string; dependency: string | null }>;
+    };
+    const firstWrongStage = wrongStage.requirements[0];
+    if (firstWrongStage === undefined) throw new Error("pending requirement missing");
+    firstWrongStage.blockingStage = "stage-3";
+    firstWrongStage.dependency = "0004";
+    expect(validatePending(wrongStage)).toBe(false);
   });
 
   it("resolves every structured pending reference to an exact Markdown heading", async () => {
@@ -209,9 +253,15 @@ describe("crypto-envelope v1 executable catalog", () => {
         cases: [
           {
             id: "state-uint64-boundary",
+            originatingRequirementId: "generation-root-initial",
             operation: "state-generation",
-            input: { kind: 16, generation: value },
-            parameters: { previousGeneration: "0" },
+            input: {
+              action: "validate",
+              currentGeneration: "0",
+              candidateGeneration: value,
+              kind: "root",
+            },
+            parameters: {},
             expect: { outcome: "reject", error: "bounds" },
           },
         ],
@@ -226,9 +276,15 @@ describe("crypto-envelope v1 executable catalog", () => {
         cases: [
           {
             id: "state-uint64-boundary",
+            originatingRequirementId: "generation-root-initial",
             operation: "state-generation",
-            input: { kind: 16, generation: value },
-            parameters: { previousGeneration: "0" },
+            input: {
+              action: "validate",
+              currentGeneration: "0",
+              candidateGeneration: value,
+              kind: "root",
+            },
+            parameters: {},
             expect: { outcome: "reject", error: "bounds" },
           },
         ],
@@ -278,8 +334,14 @@ describe("crypto-envelope v1 executable catalog", () => {
         "unsafe uint64 JSON number",
         (candidate) => {
           candidate.operation = "state-generation";
-          candidate.input = { kind: 16, generation: 9007199254740992 };
-          candidate.parameters = { previousGeneration: "0" };
+          candidate.originatingRequirementId = "generation-root-initial";
+          candidate.input = {
+            action: "validate",
+            currentGeneration: "0",
+            candidateGeneration: 9007199254740992,
+            kind: "root",
+          };
+          candidate.parameters = {};
           candidate.expect = { outcome: "reject", error: "bounds" };
         },
       ],
@@ -300,6 +362,7 @@ describe("crypto-envelope v1 executable catalog", () => {
     const validate = await validator(schemaPath);
     const base = {
       id: "future-envelope-rejection",
+      originatingRequirementId: "future-envelope-rejection",
       operation: "envelope",
       input: {
         envelope: "00",
@@ -354,9 +417,9 @@ describe("crypto-envelope v1 executable catalog", () => {
     const executablePasswords = catalog.catalog.cases.filter(
       (vector) => vector.operation === "password-encoding" && vector.expect.outcome === "success",
     );
-    expect(executablePasswords).toHaveLength(2);
+    expect(executablePasswords).toHaveLength(3);
     for (const vector of executablePasswords) {
-      expect("scalars" in vector.input).toBe(true);
+      expect("scalars" in vector.input || "repeatScalar" in vector.input).toBe(true);
       expect("utf8" in vector.input).toBe(false);
     }
     const firstPassword = executablePasswords[0];
@@ -386,6 +449,33 @@ describe("crypto-envelope v1 executable catalog", () => {
     }
   });
 
+  it("verifies password byte boundaries and envelope-local generation actions", async () => {
+    const catalog = await loadCatalog();
+    const passwordBoundary = catalog.catalog.cases.filter(
+      ({ id }) =>
+        id === "password-accept-1024-utf8-bytes" || id === "password-reject-1025-utf8-bytes",
+    );
+    const generations = catalog.catalog.cases.filter(
+      ({ operation }) => operation === "state-generation",
+    );
+    expect(passwordBoundary).toHaveLength(2);
+    expect(generations).toHaveLength(11);
+    const selected = await validatedSubset(catalog.catalog, passwordBoundary);
+    await expect(
+      verifyCatalog(selected, {
+        verify: (request) =>
+          request.id === "password-accept-1024-utf8-bytes"
+            ? { outcome: "success", output: "61".repeat(1024) }
+            : { outcome: "reject", error: "password-length" },
+      }),
+    ).resolves.toEqual([
+      { id: "password-accept-1024-utf8-bytes", passed: true },
+      { id: "password-reject-1025-utf8-bytes", passed: true },
+    ]);
+    expect(generations.map(({ input }) => input.action)).toContain("validate");
+    expect(generations.map(({ input }) => input.action)).toContain("increment");
+  });
+
   it("compares canonical states independent of insertion order and rejects mismatches", () => {
     expect(
       canonicalStatesEqual(
@@ -413,9 +503,15 @@ describe("crypto-envelope v1 executable catalog", () => {
       cases: [
         {
           id: "state-runtime-uint64",
+          originatingRequirementId: "generation-root-initial",
           operation: "state-generation",
-          input: { kind: 16, generation: "1" },
-          parameters: { previousGeneration: "0" },
+          input: {
+            action: "validate",
+            currentGeneration: "0",
+            candidateGeneration: "1",
+            kind: "root",
+          },
+          parameters: {},
           expect: { outcome: "success", state: { generation: "1" } },
         },
       ],

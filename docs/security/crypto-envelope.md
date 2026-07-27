@@ -14,7 +14,11 @@ The password wrapper is local-only authority: it derives a 32-byte key with
 Argon2id and unwraps the random ARK. WebAuthn and future recovery challenge
 messages do not receive the password, its Argon2 output, or a verifier. The
 recovery secret is a separate 32-byte random local authority; its server-side
-authentication construction is intentionally deferred to Task 0009.
+authentication construction is intentionally deferred to Task 0009. ADR 0011
+defines its offline recovery-kit serialization and mandatory pre-initialization
+confirmation. The checksummed kit is still a complete secret authority: it must
+never be persisted with vault records, transmitted, logged, or treated as safer
+to disclose because it has a checksum.
 
 ## Required enforcement points
 

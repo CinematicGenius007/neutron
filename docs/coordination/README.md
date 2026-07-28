@@ -4,6 +4,10 @@ This directory makes project state durable across agents, sessions, and tools.
 Chat messages are useful for immediate coordination but are not the project
 record.
 
+`HANDOFF.md` is the single current session checkpoint. Read it when taking over
+the repository and refresh it before transferring or stopping work; task files
+remain authoritative for lifecycle status and acceptance criteria.
+
 ## Why one file per task
 
 A shared checkbox list becomes a write hotspot. Neutron instead assigns each

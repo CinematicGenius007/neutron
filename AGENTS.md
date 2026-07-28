@@ -143,3 +143,15 @@ Stop and mark the task blocked when:
 - Real production secrets would be needed for development or tests.
 
 Record the blocker and the smallest user or design decision needed to proceed.
+
+## Session handoff checkpoint
+
+Before pausing, stopping, or transferring orchestration to another agent, update
+`docs/coordination/HANDOFF.md`. Record only repository-verifiable facts: current
+task status and owner/reviewer, exact commits, dirty paths, commands actually run
+and their results, unresolved findings, the next safe action, and explicit
+non-goals. Commit a coherent checkpoint when authorized; otherwise identify the
+uncommitted paths precisely. The receiving agent must read the handoff after the
+required project documents, verify `git status` and referenced commits, and
+update the handoff again before its own session ends. Never use a handoff to mark
+an unreviewed security-sensitive task done.

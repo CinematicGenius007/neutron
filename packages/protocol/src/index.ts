@@ -28,3 +28,9 @@ export {
   encodePasswordString,
   encodePasswordUtf16Be,
 } from "./password.js";
+export {
+  decodeRecoveryKitV1,
+  encodeRecoveryKitV1,
+  RecoveryKitFailure,
+  type RecoveryKitV1,
+} from "./recovery-kit.js";

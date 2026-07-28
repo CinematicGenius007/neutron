@@ -72,6 +72,40 @@ export function prepareEncryptedRecordMutations(
   return prepared;
 }
 
+export function prepareEncryptedRecords(
+  envelopes: readonly Uint8Array[],
+): readonly EncryptedRecord[] {
+  if (!Array.isArray(envelopes) || Object.getPrototypeOf(envelopes) !== Array.prototype)
+    throw new EncryptedRecordFailure("invalid-record");
+  const descriptors = Object.getOwnPropertyDescriptors(envelopes);
+  const records: EncryptedRecord[] = [];
+  for (let index = 0; index < envelopes.length; index += 1) {
+    const descriptor = descriptors[index.toString()];
+    if (
+      descriptor === undefined ||
+      descriptor.enumerable !== true ||
+      descriptor.get !== undefined ||
+      descriptor.set !== undefined
+    )
+      throw new EncryptedRecordFailure("invalid-record");
+    records.push(createEncryptedRecord(envelopes[index]));
+  }
+  if (
+    records.length < 1 ||
+    Reflect.ownKeys(envelopes).some(
+      (key) =>
+        key !== "length" &&
+        (typeof key !== "string" ||
+          !/^(?:0|[1-9][0-9]*)$/.test(key) ||
+          Number(key) >= envelopes.length),
+    )
+  )
+    throw new EncryptedRecordFailure("invalid-record");
+  const identities = records.map((record) => record.identity);
+  if (new Set(identities).size !== identities.length) throw new EncryptedRecordFailure("conflict");
+  return records;
+}
+
 export class MemoryEncryptedRecordRepository implements EncryptedRecordRepository {
   readonly #records = new Map<EncryptedRecordIdentity, EncryptedRecord>();
   #closed = false;
@@ -109,6 +143,14 @@ export class MemoryEncryptedRecordRepository implements EncryptedRecordRepositor
     return record === undefined
       ? undefined
       : { record: cloneEncryptedRecord(record), status: "valid" };
+  }
+
+  async initializeIfEmpty(envelopes: readonly Uint8Array[]): Promise<readonly EncryptedRecord[]> {
+    this.#assertOpen();
+    const records = prepareEncryptedRecords(envelopes);
+    if (this.#records.size !== 0) throw new EncryptedRecordFailure("conflict");
+    for (const record of records) this.#records.set(record.identity, cloneEncryptedRecord(record));
+    return records.map(cloneEncryptedRecord);
   }
 
   async list(): Promise<readonly EncryptedRecordRead[]> {

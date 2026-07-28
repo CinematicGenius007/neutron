@@ -30,4 +30,5 @@ export {
 export {
   MemoryEncryptedRecordRepository,
   prepareEncryptedRecordMutations,
+  prepareEncryptedRecords,
 } from "./memory-repository.js";

@@ -115,4 +115,25 @@ describe("encrypted record repository", () => {
     });
     expect(await repository.list()).toEqual([]);
   });
+
+  it("initializes exactly once without partial or aliased records", async () => {
+    const repository = new MemoryEncryptedRecordRepository();
+    const first = envelope("envelope-item-payload-canonical-padding");
+    const second = envelope("envelope-index-payload-canonical-padding");
+    const initialized = await repository.initializeIfEmpty([first, second]);
+    first.fill(0);
+    initialized[0]?.envelope.fill(0);
+    expect(await repository.list()).toHaveLength(2);
+    await expect(repository.initializeIfEmpty([second])).rejects.toMatchObject({
+      code: "conflict",
+    });
+    expect(await repository.list()).toHaveLength(2);
+
+    await expect(
+      new MemoryEncryptedRecordRepository().initializeIfEmpty([
+        second,
+        envelope("hardening-reject-bad-magic"),
+      ]),
+    ).rejects.toMatchObject({ code: "invalid-record" });
+  });
 });

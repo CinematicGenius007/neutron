@@ -229,4 +229,49 @@ describe("encrypted IndexedDB repository", () => {
     repository.close();
     await deleteDatabase(databaseName);
   }, 30_000);
+
+  it("allows exactly one complete concurrent initialization", async () => {
+    const databaseName = `neutron-init-${crypto.randomUUID()}`;
+    const provider = await createLibsodiumProvider();
+    const itemKey = Uint8Array.from({ length: 32 }, (_, index) => index + 51);
+    const makeSet = (accountOffset: number) => {
+      const accountId = Uint8Array.from({ length: 16 }, (_, index) => accountOffset + index + 1);
+      return [0, 1].map((index) =>
+        sealEnvelope(provider, {
+          accountId,
+          content: { plaintext: encodeVaultItem(items[index]), type: "payload" },
+          generation: 1n,
+          keySource: { parentKey: itemKey, source: "parent" },
+          keyVersion: 1,
+          kind: ENVELOPE_KIND.ITEM_PAYLOAD,
+          objectId: Uint8Array.from(
+            { length: 16 },
+            (_, byte) => accountOffset + 64 + index * 16 + byte,
+          ),
+        }),
+      );
+    };
+    const firstSet = makeSet(1);
+    const secondSet = makeSet(101);
+    const first = await openIndexedDbEncryptedRecordRepositoryForTesting(databaseName);
+    const second = await openIndexedDbEncryptedRecordRepositoryForTesting(databaseName);
+    const outcomes = await Promise.allSettled([
+      first.initializeIfEmpty(firstSet),
+      second.initializeIfEmpty(secondSet),
+    ]);
+    expect(outcomes.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter(({ status }) => status === "rejected")).toHaveLength(1);
+    const stored = await first.list();
+    expect(stored).toHaveLength(2);
+    const storedAccounts = new Set(
+      stored.map((entry) =>
+        entry.status === "valid" ? entry.record.identity.split(":")[2] : "corrupt",
+      ),
+    );
+    expect(storedAccounts.size).toBe(1);
+    expect(storedAccounts.has("corrupt")).toBe(false);
+    first.close();
+    second.close();
+    await deleteDatabase(databaseName);
+  }, 30_000);
 });

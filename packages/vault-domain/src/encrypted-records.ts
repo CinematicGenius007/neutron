@@ -39,6 +39,7 @@ export interface EncryptedRecordRepository {
   close(): void;
   delete(identity: EncryptedRecordIdentity): Promise<boolean>;
   get(identity: EncryptedRecordIdentity): Promise<EncryptedRecordRead | undefined>;
+  initializeIfEmpty(envelopes: readonly Uint8Array[]): Promise<readonly EncryptedRecord[]>;
   list(): Promise<readonly EncryptedRecordRead[]>;
   put(envelope: Uint8Array): Promise<EncryptedRecord>;
 }

@@ -9,6 +9,7 @@ import {
   type EncryptedRecordRepository,
   parseEncryptedRecordIdentity,
   prepareEncryptedRecordMutations,
+  prepareEncryptedRecords,
 } from "@neutron/vault-domain";
 
 const databaseVersion = 1;
@@ -166,6 +167,31 @@ export class IndexedDbEncryptedRecordRepository implements EncryptedRecordReposi
     const value = await requestResult(transaction.objectStore(storeName).get(key));
     await done;
     return value === undefined ? undefined : readStoredValue(value, key);
+  }
+
+  async initializeIfEmpty(envelopes: readonly Uint8Array[]): Promise<readonly EncryptedRecord[]> {
+    this.#assertOpen();
+    const records = prepareEncryptedRecords(envelopes);
+    const transaction = this.#database.transaction(storeName, "readwrite", {
+      durability: "strict",
+    });
+    const done = transactionDone(transaction);
+    const store = transaction.objectStore(storeName);
+    let count: number;
+    try {
+      count = await requestResult(store.count());
+    } catch {
+      await done.catch(() => undefined);
+      throw storageFailure();
+    }
+    if (count !== 0) {
+      transaction.abort();
+      await done.catch(() => undefined);
+      throw new EncryptedRecordFailure("conflict");
+    }
+    for (const record of records) store.add(storedValue(record), record.identity);
+    await done;
+    return records.map(cloneEncryptedRecord);
   }
 
   async list(): Promise<readonly EncryptedRecordRead[]> {

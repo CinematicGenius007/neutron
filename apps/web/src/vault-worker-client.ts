@@ -67,6 +67,8 @@ interface NeutronTrustedTypesFactory {
 }
 
 let workerScriptPolicy: NeutronTrustedTypesPolicy | undefined;
+const defaultLockTimeoutMilliseconds = 2_000;
+const moduleWorkerProbeTimeoutMilliseconds = 2_000;
 
 function trustedWorkerScriptUrl(url: URL): URL | string {
   const factory = (globalThis as { trustedTypes?: NeutronTrustedTypesFactory }).trustedTypes;
@@ -145,13 +147,17 @@ function validateOperationResult(pending: PendingRequest, result: Record<string,
 export class VaultWorkerClient {
   readonly #worker: VaultWorkerLike;
   readonly #pending = new Map<string, PendingRequest>();
+  readonly #lockTimeoutMilliseconds: number;
   #epoch = 0n;
   #nextRequestId = 1n;
   #closed = false;
   #locking = false;
 
-  constructor(worker: VaultWorkerLike) {
+  constructor(worker: VaultWorkerLike, lockTimeoutMilliseconds = defaultLockTimeoutMilliseconds) {
+    if (!Number.isSafeInteger(lockTimeoutMilliseconds) || lockTimeoutMilliseconds < 1)
+      throw new VaultWorkerClientFailure("invalid-request");
     this.#worker = worker;
+    this.#lockTimeoutMilliseconds = lockTimeoutMilliseconds;
     worker.onmessage = (event) => this.#receive(event.data);
     worker.onerror = () => this.#failClosed("worker-failure");
     worker.onmessageerror = () => this.#failClosed("invalid-worker-response");
@@ -358,9 +364,19 @@ export class VaultWorkerClient {
     if (this.#locking) throw new VaultWorkerClientFailure("locked");
     this.#locking = true;
     this.#rejectPending("locked");
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      await this.#call("lock", {}, "done", true);
+      await Promise.race([
+        this.#call("lock", {}, "done", true),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(new VaultWorkerClientFailure("lock-timeout")),
+            this.#lockTimeoutMilliseconds,
+          );
+        }),
+      ]);
     } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
       this.#failClosed("locked");
     }
   }
@@ -378,4 +394,27 @@ export function createVaultWorkerClient(): VaultWorkerClient {
       name: "neutron-vault",
     }),
   );
+}
+
+export async function verifyVaultModuleWorkerSupport(): Promise<boolean> {
+  let client: VaultWorkerClient | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    client = createVaultWorkerClient();
+    await Promise.race([
+      client.state(),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new VaultWorkerClientFailure("worker-failure")),
+          moduleWorkerProbeTimeoutMilliseconds,
+        );
+      }),
+    ]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+    client?.terminate();
+  }
 }

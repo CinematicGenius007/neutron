@@ -623,4 +623,21 @@ describe("vault worker boundary", () => {
     await locking;
     expect(terminated).toBe(true);
   });
+
+  it("terminates an unresponsive worker when lock acknowledgement expires", async () => {
+    let terminated = false;
+    const worker: VaultWorkerLike = {
+      onerror: null,
+      onmessage: null,
+      onmessageerror: null,
+      postMessage() {},
+      terminate() {
+        terminated = true;
+      },
+    };
+    const client = new VaultWorkerClient(worker, 5);
+    await expect(client.lock()).rejects.toMatchObject({ code: "lock-timeout" });
+    expect(terminated).toBe(true);
+    expect(client.isClosed).toBe(true);
+  });
 });

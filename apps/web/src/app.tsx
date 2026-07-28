@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type BrowserSupport, detectBrowserSupport } from "./browser-support.js";
 import type { LocalVaultMetadata } from "./local-vault.js";
 import {
@@ -7,6 +7,7 @@ import {
   type VaultWorkerClient,
   type VaultWorkerItemRecord,
   type VaultWorkerSummaryPage,
+  verifyVaultModuleWorkerSupport,
 } from "./vault-worker-client.js";
 
 export interface VaultBroker
@@ -25,6 +26,7 @@ export interface VaultBroker
 
 export interface VaultAppProps {
   readonly createBroker?: () => VaultBroker;
+  readonly probeModuleWorker?: () => Promise<boolean>;
   readonly support?: BrowserSupport;
 }
 
@@ -82,11 +84,18 @@ function itemDetails(record: VaultWorkerItemRecord) {
   );
 }
 
+function focusHeading(node: HTMLHeadingElement | null): void {
+  node?.focus();
+}
+
 export function VaultApp({
   createBroker = createVaultWorkerClient,
-  support = detectBrowserSupport(),
+  probeModuleWorker = verifyVaultModuleWorkerSupport,
+  support,
 }: VaultAppProps) {
   const broker = useRef<VaultBroker | undefined>(undefined);
+  const operationEpoch = useRef(0);
+  const [checkedSupport, setCheckedSupport] = useState<BrowserSupport | undefined>(support);
   const [screen, setScreen] = useState<Screen>("locked");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -97,6 +106,44 @@ export function VaultApp({
   const [metadata, setMetadata] = useState<LocalVaultMetadata>();
   const [page, setPage] = useState<VaultWorkerSummaryPage>();
   const [selected, setSelected] = useState<VaultWorkerItemRecord>();
+
+  useEffect(() => {
+    if (support !== undefined) {
+      setCheckedSupport(support);
+      return;
+    }
+    const detected = detectBrowserSupport();
+    if (!detected.supported) {
+      setCheckedSupport(detected);
+      return;
+    }
+    let cancelled = false;
+    void probeModuleWorker().then(
+      (moduleWorkerSupported) => {
+        if (cancelled) return;
+        setCheckedSupport(
+          moduleWorkerSupported
+            ? detected
+            : Object.freeze({
+                missing: Object.freeze(["module workers"]),
+                supported: false,
+              }),
+        );
+      },
+      () => {
+        if (!cancelled)
+          setCheckedSupport(
+            Object.freeze({
+              missing: Object.freeze(["module workers"]),
+              supported: false,
+            }),
+          );
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [probeModuleWorker, support]);
 
   function currentBroker(): VaultBroker {
     if (broker.current === undefined || broker.current.isClosed) broker.current = createBroker();
@@ -113,32 +160,39 @@ export function VaultApp({
     setSelected(undefined);
   }
 
-  async function loadPage(session: LocalVaultMetadata, cursor?: string): Promise<void> {
+  async function loadPage(
+    session: LocalVaultMetadata,
+    epoch: number,
+    cursor?: string,
+  ): Promise<void> {
     const vaultId = session.vaults[0]?.id;
     if (vaultId === undefined) throw new Error("missing vault");
-    setPage(await currentBroker().listItemSummaries(vaultId, 24, cursor));
+    const nextPage = await currentBroker().listItemSummaries(vaultId, 24, cursor);
+    if (operationEpoch.current === epoch) setPage(nextPage);
   }
 
-  async function run(action: () => Promise<void>): Promise<void> {
+  async function run(action: (epoch: number) => Promise<void>): Promise<void> {
+    const epoch = operationEpoch.current;
     setBusy(true);
     setError(undefined);
     try {
-      await action();
+      await action(epoch);
     } catch (cause) {
-      setError(safeMessage(cause));
+      if (operationEpoch.current === epoch) setError(safeMessage(cause));
     } finally {
-      setBusy(false);
+      if (operationEpoch.current === epoch) setBusy(false);
     }
   }
 
   async function unlock(event: FormEvent): Promise<void> {
     event.preventDefault();
-    await run(async () => {
+    await run(async (epoch) => {
       const session = await currentBroker().unlock(password);
+      if (operationEpoch.current !== epoch) return;
       setPassword("");
       setMetadata(session);
       setScreen("unlocked");
-      await loadPage(session);
+      await loadPage(session, epoch);
     });
     setPassword("");
   }
@@ -149,8 +203,9 @@ export function VaultApp({
       setError("The passwords do not match.");
       return;
     }
-    await run(async () => {
+    await run(async (epoch) => {
       const kit = await currentBroker().beginEnrollment(password);
+      if (operationEpoch.current !== epoch) return;
       setRecoveryKit(kit);
       setScreen("confirm-recovery");
     });
@@ -160,19 +215,22 @@ export function VaultApp({
 
   async function confirmRecovery(event: FormEvent): Promise<void> {
     event.preventDefault();
-    await run(async () => {
+    await run(async (epoch) => {
       const session = await currentBroker().confirmEnrollment(recoveryConfirmation);
+      if (operationEpoch.current !== epoch) return;
       setRecoveryKit("");
       setRecoveryConfirmation("");
       setMetadata(session);
       setScreen("unlocked");
-      await loadPage(session);
+      await loadPage(session, epoch);
     });
   }
 
   async function cancelEnrollment(): Promise<void> {
     const active = broker.current;
+    operationEpoch.current += 1;
     resetSecrets();
+    setBusy(false);
     setScreen("locked");
     if (active !== undefined) {
       try {
@@ -186,31 +244,56 @@ export function VaultApp({
 
   async function lock(): Promise<void> {
     const active = broker.current;
+    operationEpoch.current += 1;
     resetSecrets();
+    setBusy(false);
     setError(undefined);
     setScreen("locked");
     broker.current = undefined;
-    if (active !== undefined) await active.lock();
+    if (active !== undefined) {
+      try {
+        await active.lock();
+      } catch {
+        active.terminate();
+      }
+    }
   }
 
   async function openItem(id: string): Promise<void> {
     if (metadata === undefined) return;
-    await run(async () => {
+    await run(async (epoch) => {
       const vaultId = metadata.vaults[0]?.id;
       if (vaultId === undefined) throw new Error("missing vault");
-      setSelected(await currentBroker().getItem(vaultId, id));
+      const item = await currentBroker().getItem(vaultId, id);
+      if (operationEpoch.current === epoch) setSelected(item);
     });
   }
 
-  if (!support.supported) {
+  if (checkedSupport === undefined) {
+    return (
+      <main className="centered-shell" aria-busy="true">
+        <section className="card" aria-labelledby="checking-title">
+          <p className="eyebrow">Browser check</p>
+          <h1 id="checking-title" ref={focusHeading} tabIndex={-1}>
+            Verifying local security support…
+          </h1>
+          <p>Password entry stays unavailable until the module worker check succeeds.</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!checkedSupport.supported) {
     return (
       <main className="centered-shell">
         <section className="card" aria-labelledby="unsupported-title">
           <p className="eyebrow">Unsupported browser</p>
-          <h1 id="unsupported-title">Neutron cannot open safely here</h1>
+          <h1 id="unsupported-title" ref={focusHeading} tabIndex={-1}>
+            Neutron cannot open safely here
+          </h1>
           <p>This browser is missing required local security capabilities:</p>
           <ul>
-            {support.missing.map((feature) => (
+            {checkedSupport.missing.map((feature) => (
               <li key={feature}>{feature}</li>
             ))}
           </ul>
@@ -238,7 +321,9 @@ export function VaultApp({
       {screen === "locked" ? (
         <section className="card auth-card" aria-labelledby="unlock-title">
           <p className="eyebrow">Locked by default</p>
-          <h1 id="unlock-title">Welcome back</h1>
+          <h1 id="unlock-title" ref={focusHeading} tabIndex={-1}>
+            Welcome back
+          </h1>
           <p>Your password stays in this browser and is used only by the isolated vault worker.</p>
           <form onSubmit={(event) => void unlock(event)}>
             <label htmlFor="unlock-password">Master password</label>
@@ -271,7 +356,9 @@ export function VaultApp({
       {screen === "enroll" ? (
         <section className="card auth-card" aria-labelledby="enroll-title">
           <p className="eyebrow">New local vault</p>
-          <h1 id="enroll-title">Choose a master password</h1>
+          <h1 id="enroll-title" ref={focusHeading} tabIndex={-1}>
+            Choose a master password
+          </h1>
           <p>There is no password reset. Your recovery kit is the offline recovery path.</p>
           <form onSubmit={(event) => void beginEnrollment(event)}>
             <label htmlFor="new-password">Master password</label>
@@ -314,7 +401,9 @@ export function VaultApp({
       {screen === "confirm-recovery" ? (
         <section className="card recovery-card" aria-labelledby="recovery-title">
           <p className="eyebrow">Recovery checkpoint</p>
-          <h1 id="recovery-title">Save this recovery kit offline</h1>
+          <h1 id="recovery-title" ref={focusHeading} tabIndex={-1}>
+            Save this recovery kit offline
+          </h1>
           <p>Enrollment is not stored until you re-enter this exact kit.</p>
           <output className="recovery-kit" aria-label="Recovery kit">
             {recoveryKit}
@@ -349,7 +438,9 @@ export function VaultApp({
           <div className="vault-toolbar">
             <div>
               <p className="eyebrow">Unlocked locally</p>
-              <h1>Your vault</h1>
+              <h1 ref={focusHeading} tabIndex={-1}>
+                Your vault
+              </h1>
             </div>
             <button type="button" className="danger" onClick={() => void lock()}>
               Lock now
@@ -385,7 +476,7 @@ export function VaultApp({
                   className="secondary"
                   type="button"
                   disabled={busy}
-                  onClick={() => void run(() => loadPage(metadata, page.nextCursor))}
+                  onClick={() => void run((epoch) => loadPage(metadata, epoch, page.nextCursor))}
                 >
                   Next page
                 </button>

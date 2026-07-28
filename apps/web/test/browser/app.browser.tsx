@@ -74,7 +74,7 @@ let container: HTMLDivElement | undefined;
 let root: Root | undefined;
 
 async function render(
-  broker: FakeBroker,
+  broker: VaultBroker,
   support = supported,
   createBroker: () => VaultBroker = () => broker,
 ): Promise<void> {
@@ -114,6 +114,28 @@ afterEach(async () => {
 });
 
 describe("React vault shell", () => {
+  it("keeps password entry unavailable until a real module-worker probe succeeds", async () => {
+    let created = false;
+    const broker = new FakeBroker();
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () =>
+      root?.render(
+        <VaultApp
+          createBroker={() => {
+            created = true;
+            return broker;
+          }}
+          probeModuleWorker={async () => false}
+        />,
+      ),
+    );
+    expect(container.querySelector('input[type="password"]')).toBeNull();
+    expect(container.textContent).toContain("Neutron cannot open safely here");
+    expect(created).toBe(false);
+  });
+
   it("does not create a broker when required browser capabilities are missing", async () => {
     let created = false;
     const broker = new FakeBroker();
@@ -129,12 +151,14 @@ describe("React vault shell", () => {
     const broker = new FakeBroker();
     await render(broker);
     await click("Create a local vault");
+    expect(document.activeElement?.textContent).toContain("Choose a master password");
     await enter("new-password", "synthetic master password");
     await enter("new-password-again", "synthetic master password");
     await click("Continue");
     expect(container?.textContent).toContain(kit);
     await enter("recovery-confirmation", kit);
     await click("Confirm and create vault");
+    expect(document.activeElement?.textContent).toContain("Your vault");
     expect(container?.textContent).toContain("Synthetic login");
     expect(container?.textContent).not.toContain(secret);
     await click("Synthetic login");
@@ -144,5 +168,41 @@ describe("React vault shell", () => {
     expect(container?.textContent).not.toContain(kit);
     expect(container?.textContent).toContain("Welcome back");
     expect(broker.lockCalls).toBe(1);
+    expect(document.activeElement?.textContent).toContain("Welcome back");
+  });
+
+  it("cannot render a point read that completes after lock", async () => {
+    let resolveItem: ((item: Awaited<ReturnType<FakeBroker["getItem"]>>) => void) | undefined;
+    class DelayedBroker extends FakeBroker {
+      override async getItem() {
+        return new Promise<Awaited<ReturnType<FakeBroker["getItem"]>>>((resolve) => {
+          resolveItem = resolve;
+        });
+      }
+    }
+    const broker = new DelayedBroker();
+    await render(broker);
+    await enter("unlock-password", "synthetic master password");
+    await click("Unlock vault");
+    act(() => byText("Synthetic login").click());
+    await act(async () => Promise.resolve());
+    await click("Lock now");
+    await act(async () =>
+      resolveItem?.({
+        id: itemId,
+        generation: "1",
+        keyVersion: 1,
+        item: {
+          schemaVersion: 1,
+          type: "login",
+          title: "Synthetic login",
+          tags: [],
+          username: "fixture@example.invalid",
+          password: secret,
+        },
+      }),
+    );
+    expect(container?.textContent).toContain("Welcome back");
+    expect(container?.textContent).not.toContain(secret);
   });
 });

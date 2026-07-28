@@ -6,10 +6,11 @@
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && node scripts/verify-build.mjs",
     "dev": "vite",
     "preview": "vite preview",
-    "test:browser": "vitest run --config test/vitest.browser.config.ts"
+    "test:browser": "vitest run --config test/vitest.browser.config.ts",
+    "test:production": "vite build && node scripts/verify-build.mjs && node scripts/test-production.mjs"
   },
   "dependencies": {
     "@neutron/crypto": "workspace:*",

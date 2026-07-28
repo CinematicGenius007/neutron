@@ -66,6 +66,20 @@ export interface VaultItemList {
   readonly items: readonly VaultItemRecord[];
 }
 
+export interface VaultItemSummary {
+  readonly generation: bigint;
+  readonly id: string;
+  readonly keyVersion: number;
+  readonly title: string;
+  readonly type: VaultItem["type"];
+}
+
+export interface VaultItemSummaryPage {
+  readonly issues: readonly Readonly<{ code: "corrupt-item"; id: string }>[];
+  readonly items: readonly VaultItemSummary[];
+  readonly nextCursor?: string;
+}
+
 type InternalItem =
   | Readonly<{
       generation: bigint;
@@ -87,6 +101,7 @@ interface ItemInventoryEntry {
 
 const itemIdPattern = /^[0-9a-f]{32}$/;
 const maximumStoredRecords = 20_003;
+const maximumSummaryPageSize = 100;
 const sessionCapability = Symbol("LocalVaultSession");
 const enrollmentCapability = Symbol("PendingOfflineEnrollment");
 
@@ -453,6 +468,56 @@ export class LocalVaultSession {
     }
     this.#assertOperation(epoch);
     return Object.freeze({ issues: Object.freeze(issues), items: Object.freeze(items) });
+  }
+
+  async listItemSummaries(
+    vaultId: unknown,
+    cursor: unknown,
+    limit: unknown,
+  ): Promise<VaultItemSummaryPage> {
+    const epoch = this.#beginOperation();
+    const vault = this.#vault(vaultId, epoch);
+    if (cursor !== undefined && (typeof cursor !== "string" || !itemIdPattern.test(cursor)))
+      throw new LocalVaultFailure("invalid-item-reference");
+    if (
+      !Number.isInteger(limit) ||
+      (limit as number) < 1 ||
+      (limit as number) > maximumSummaryPageSize
+    )
+      throw new LocalVaultFailure("invalid-item-reference");
+    const inventory = await this.#inventory(epoch);
+    let start = 0;
+    if (cursor !== undefined) {
+      while (start < inventory.length && (inventory[start]?.id ?? "") <= cursor) start += 1;
+    }
+    const end = Math.min(start + (limit as number), inventory.length);
+    const items: VaultItemSummary[] = [];
+    const issues: { code: "corrupt-item"; id: string }[] = [];
+    for (let index = start; index < end; index += 1) {
+      const inventoryEntry = inventory[index];
+      if (inventoryEntry === undefined) throw new LocalVaultFailure("corrupt-state");
+      const entry = await this.#loadItem(vault, inventoryEntry, epoch);
+      if (entry.status === "corrupt") {
+        issues.push(Object.freeze({ code: "corrupt-item", id: entry.id }));
+      } else {
+        items.push(
+          Object.freeze({
+            generation: entry.generation,
+            id: entry.id,
+            keyVersion: entry.keyVersion,
+            title: entry.item.title,
+            type: entry.item.type,
+          }),
+        );
+      }
+    }
+    this.#assertOperation(epoch);
+    const nextCursor = end < inventory.length ? inventory[end - 1]?.id : undefined;
+    return Object.freeze({
+      issues: Object.freeze(issues),
+      items: Object.freeze(items),
+      ...(nextCursor === undefined ? {} : { nextCursor }),
+    });
   }
 
   async getItem(vaultId: unknown, itemId: unknown): Promise<VaultItemRecord | undefined> {

@@ -184,6 +184,26 @@ describe("vault worker protocol", () => {
       parseVaultWorkerResponse({
         protocol: 1,
         requestId: "1",
+        sessionEpoch: "1",
+        operation: "unlock",
+        ok: true,
+        result: {
+          kind: "session",
+          metadata: {
+            accountId: "1".repeat(32),
+            arkEpoch: 1,
+            vaults: [
+              { id: "2".repeat(32), keyVersion: 1 },
+              { id: "2".repeat(32), keyVersion: 1 },
+            ],
+          },
+        },
+      }),
+    ).toThrow(VaultWorkerProtocolFailure);
+    expect(() =>
+      parseVaultWorkerResponse({
+        protocol: 1,
+        requestId: "1",
         sessionEpoch: "0",
         operation: "create-item",
         ok: true,

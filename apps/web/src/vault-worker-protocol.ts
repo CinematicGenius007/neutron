@@ -1,4 +1,4 @@
-import { parseVaultItem, type VaultItem } from "@neutron/vault-domain";
+import { parseVaultItem, type VaultItem } from "@neutron/vault-domain/items";
 import type { LocalVaultFailureCode, LocalVaultMetadata } from "./local-vault.js";
 
 export const VAULT_WORKER_PROTOCOL = 1 as const;
@@ -307,10 +307,14 @@ function parseMetadata(candidate: unknown): LocalVaultMetadata {
   positiveUint32(value.arkEpoch);
   const sourceVaults = array(value.vaults, 16, 1);
   const vaults: { id: string; keyVersion: number }[] = [];
+  const vaultIds = new Set<string>();
   for (let index = 0; index < sourceVaults.length; index += 1) {
     const vault = exact(sourceVaults[index], ["id", "keyVersion"]);
+    const vaultId = id(vault.id);
+    if (vaultIds.has(vaultId)) fail();
+    vaultIds.add(vaultId);
     vaults[index] = Object.freeze({
-      id: id(vault.id),
+      id: vaultId,
       keyVersion: positiveUint32(vault.keyVersion),
     });
   }

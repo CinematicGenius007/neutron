@@ -1,5 +1,6 @@
 import type { VaultItem } from "@neutron/vault-domain";
 import type { LocalVaultMetadata } from "./local-vault.js";
+import vaultWorkerScript from "./vault-worker-entry.ts?worker&url";
 import {
   incrementPositiveCanonicalUint64,
   parseVaultWorkerRequest,
@@ -52,6 +53,31 @@ export class VaultWorkerClientFailure extends Error {
     this.name = "VaultWorkerClientFailure";
     this.code = code;
   }
+}
+
+interface NeutronTrustedTypesPolicy {
+  createScriptURL(value: string): unknown;
+}
+
+interface NeutronTrustedTypesFactory {
+  createPolicy(
+    name: "neutron-static-script-url",
+    rules: Readonly<{ createScriptURL(value: string): string }>,
+  ): NeutronTrustedTypesPolicy;
+}
+
+let workerScriptPolicy: NeutronTrustedTypesPolicy | undefined;
+
+function trustedWorkerScriptUrl(url: URL): URL | string {
+  const factory = (globalThis as { trustedTypes?: NeutronTrustedTypesFactory }).trustedTypes;
+  if (factory === undefined) return url;
+  workerScriptPolicy ??= factory.createPolicy("neutron-static-script-url", {
+    createScriptURL(value) {
+      if (value !== url.href) throw new TypeError("unapproved worker script URL");
+      return value;
+    },
+  });
+  return workerScriptPolicy.createScriptURL(url.href) as string;
 }
 
 interface PendingRequest {
@@ -345,8 +371,9 @@ export class VaultWorkerClient {
 }
 
 export function createVaultWorkerClient(): VaultWorkerClient {
+  const workerUrl = new URL(vaultWorkerScript, globalThis.location.href);
   return new VaultWorkerClient(
-    new Worker(new URL("./vault-worker-entry.ts", import.meta.url), {
+    new Worker(trustedWorkerScriptUrl(workerUrl), {
       type: "module",
       name: "neutron-vault",
     }),

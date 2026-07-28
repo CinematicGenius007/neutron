@@ -9,7 +9,9 @@
     "test:browser": "vitest run --config test/vitest.browser.config.ts"
   },
   "dependencies": {
+    "@neutron/crypto": "workspace:*",
     "@neutron/import-export": "workspace:*",
+    "@neutron/protocol": "workspace:*",
     "@neutron/sync-engine": "workspace:*",
     "@neutron/ui": "workspace:*",
     "@neutron/vault-domain": "workspace:*"

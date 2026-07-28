@@ -1,12 +1,12 @@
+import { type CryptoProvider, createLibsodiumProvider } from "@neutron/crypto";
+import { decodeRecoveryKitV1, ENVELOPE_KIND, sealEnvelope } from "@neutron/protocol";
+import { encodeVaultItem, type VaultItem } from "@neutron/vault-domain";
 import { describe, expect, it } from "vitest";
-
-import { createLibsodiumProvider } from "../../../../packages/crypto/src/index.js";
-import { ENVELOPE_KIND, sealEnvelope } from "../../../../packages/protocol/src/index.js";
-import { encodeVaultItem, type VaultItem } from "../../../../packages/vault-domain/src/index.js";
 import {
   indexedDbStorageInternals,
   openIndexedDbEncryptedRecordRepositoryForTesting,
 } from "../../src/indexeddb-repository.js";
+import { beginOfflineEnrollment, unlockOfflineVault } from "../../src/local-vault.js";
 
 const sentinels = [
   "Primary login",
@@ -272,6 +272,62 @@ describe("encrypted IndexedDB repository", () => {
     expect(storedAccounts.has("corrupt")).toBe(false);
     first.close();
     second.close();
+    await deleteDatabase(databaseName);
+  }, 30_000);
+
+  it("enrolls, reloads, unlocks, locks, and persists no enrollment secrets", async () => {
+    const databaseName = `neutron-enrollment-${crypto.randomUUID()}`;
+    const baseProvider = await createLibsodiumProvider();
+    const randomOutputs: Uint8Array[] = [];
+    const provider: CryptoProvider = {
+      name: baseProvider.name,
+      sodiumVersion: baseProvider.sodiumVersion,
+      clear: (value) => baseProvider.clear(value),
+      decryptXChaCha20Poly1305: (input) => baseProvider.decryptXChaCha20Poly1305(input),
+      deriveArgon2idKey: (password, salt) => baseProvider.deriveArgon2idKey(password, salt),
+      deriveHkdfSha256: (input) => baseProvider.deriveHkdfSha256(input),
+      encryptXChaCha20Poly1305: (input) => baseProvider.encryptXChaCha20Poly1305(input),
+      randomBytes: (length) => {
+        const value = baseProvider.randomBytes(length);
+        randomOutputs.push(value.slice());
+        return value;
+      },
+    };
+    const password = "browser-only synthetic password 秘密";
+    let repository = await openIndexedDbEncryptedRecordRepositoryForTesting(databaseName);
+    const pending = await beginOfflineEnrollment(provider, repository, password);
+    const kit = pending.recoveryKit;
+    const parsedKit = decodeRecoveryKitV1(kit);
+    expect(await repository.list()).toEqual([]);
+    const session = await pending.confirm(kit);
+    expect(await repository.list()).toHaveLength(3);
+    session.lock();
+    repository.close();
+
+    repository = await openIndexedDbEncryptedRecordRepositoryForTesting(databaseName);
+    await expect(unlockOfflineVault(provider, repository, `${password}!`)).rejects.toMatchObject({
+      code: "unlock-failed",
+    });
+    const unlocked = await unlockOfflineVault(provider, repository, password);
+    expect(unlocked.isLocked).toBe(false);
+    unlocked.lock();
+    expect(unlocked.isLocked).toBe(true);
+
+    const raw = await rawRows(databaseName);
+    const strings: string[] = [];
+    const bytes: Uint8Array[] = [];
+    collectBytes(raw, strings, bytes);
+    expect(strings.some((value) => value.includes(password) || value.includes(kit))).toBe(false);
+    const enrollmentSecrets = [
+      new TextEncoder().encode(password),
+      parsedKit.recoverySecret,
+      ...randomOutputs.filter(({ length }) => length === 32).slice(0, 3),
+    ];
+    for (const secret of enrollmentSecrets)
+      expect(bytes.some((value) => contains(value, secret))).toBe(false);
+    parsedKit.accountId.fill(0);
+    parsedKit.recoverySecret.fill(0);
+    repository.close();
     await deleteDatabase(databaseName);
   }, 30_000);
 });

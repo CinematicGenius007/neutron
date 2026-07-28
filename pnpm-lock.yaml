@@ -26,12 +26,18 @@ importers:
 
   apps/web:
     dependencies:
+      '@neutron/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
       '@neutron/import-export':
         specifier: workspace:*
         version: link:../../packages/import-export
       '@neutron/sync-engine':
         specifier: workspace:*
         version: link:../../packages/sync-engine
+      '@neutron/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
       '@neutron/ui':
         specifier: workspace:*
         version: link:../../packages/ui

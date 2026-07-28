@@ -5,10 +5,12 @@ export {
   EncryptedRecordFailure,
   type EncryptedRecordFailureCode,
   type EncryptedRecordIdentity,
+  type EncryptedRecordIdentityPrefix,
   type EncryptedRecordMutation,
   type EncryptedRecordRead,
   type EncryptedRecordRepository,
   parseEncryptedRecordIdentity,
+  parseEncryptedRecordIdentityPrefix,
   validateEncryptedRecordCandidate,
 } from "./encrypted-records.js";
 export {
@@ -29,6 +31,7 @@ export {
 } from "./items.js";
 export {
   MemoryEncryptedRecordRepository,
+  prepareConditionalBatch,
   prepareEncryptedRecordMutations,
   prepareEncryptedRecords,
 } from "./memory-repository.js";

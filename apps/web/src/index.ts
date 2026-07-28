@@ -10,4 +10,6 @@ export {
   LocalVaultSession,
   PendingOfflineEnrollment,
   unlockOfflineVault,
+  type VaultItemList,
+  type VaultItemRecord,
 } from "./local-vault.js";

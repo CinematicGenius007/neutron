@@ -1,6 +1,11 @@
 import { type CryptoProvider, createLibsodiumProvider } from "@neutron/crypto";
 import { decodeRecoveryKitV1, ENVELOPE_KIND, sealEnvelope } from "@neutron/protocol";
-import { encodeVaultItem, type VaultItem } from "@neutron/vault-domain";
+import {
+  createEncryptedRecord,
+  encodeVaultItem,
+  parseEncryptedRecordIdentityPrefix,
+  type VaultItem,
+} from "@neutron/vault-domain";
 import { describe, expect, it } from "vitest";
 import {
   indexedDbStorageInternals,
@@ -135,6 +140,109 @@ async function deleteDatabase(name: string): Promise<void> {
 }
 
 describe("encrypted IndexedDB repository", () => {
+  it("enforces exact, prefix, prototype-hostile, and atomic-count conditions", async () => {
+    const databaseName = `neutron-cas-${crypto.randomUUID()}`;
+    const provider = await createLibsodiumProvider();
+    const accountId = Uint8Array.from({ length: 16 }, (_, index) => index + 1);
+    const parentKey = Uint8Array.from({ length: 32 }, (_, index) => index + 33);
+    const envelope = (objectOffset: number, generation: bigint) =>
+      sealEnvelope(provider, {
+        accountId,
+        content: { plaintext: Uint8Array.of(objectOffset), type: "payload" },
+        generation,
+        keySource: { parentKey, source: "parent" },
+        keyVersion: 1,
+        kind: ENVELOPE_KIND.ITEM_PAYLOAD,
+        objectId: Uint8Array.from({ length: 16 }, (_, index) => objectOffset + index),
+      });
+    const first = createEncryptedRecord(envelope(1, 1n));
+    const overwritten = createEncryptedRecord(envelope(1, 1n));
+    const second = createEncryptedRecord(envelope(33, 1n));
+    const third = createEncryptedRecord(envelope(65, 1n));
+    const repository = await openIndexedDbEncryptedRecordRepositoryForTesting(databaseName);
+    await repository.put(first.envelope);
+    await repository.put(overwritten.envelope);
+
+    const originalSome = Array.prototype.some;
+    const originalMap = Array.prototype.map;
+    const originalPush = Array.prototype.push;
+    let staleFailure: unknown;
+    try {
+      Array.prototype.some = () => false;
+      Array.prototype.map = () => {
+        throw new Error("inherited map invoked");
+      };
+      Array.prototype.push = function (...values: unknown[]): number {
+        if (values[0] instanceof Promise) return this.length;
+        return Reflect.apply(originalPush, this, values) as number;
+      };
+      try {
+        await repository.applyConditionalBatch([first], [], [], undefined, 10, [
+          { identity: first.identity, type: "delete" },
+        ]);
+      } catch (error) {
+        staleFailure = error;
+      }
+    } finally {
+      Array.prototype.some = originalSome;
+      Array.prototype.map = originalMap;
+      Array.prototype.push = originalPush;
+    }
+    expect(staleFailure).toMatchObject({ code: "conflict" });
+    expect(await repository.get(first.identity)).toMatchObject({ status: "valid" });
+
+    const foreign = createEncryptedRecord(
+      sealEnvelope(provider, {
+        accountId: Uint8Array.from({ length: 16 }, (_, index) => index + 101),
+        content: { plaintext: Uint8Array.of(99), type: "payload" },
+        generation: 1n,
+        keySource: { parentKey, source: "parent" },
+        keyVersion: 1,
+        kind: ENVELOPE_KIND.ITEM_PAYLOAD,
+        objectId: Uint8Array.from({ length: 16 }, (_, index) => index + 81),
+      }),
+    );
+    await repository.put(foreign.envelope);
+    await expect(
+      repository.applyConditionalBatch(
+        [],
+        [second.identity],
+        [],
+        first.identity.split(":")[2],
+        10,
+        [{ envelope: second.envelope, type: "put" }],
+      ),
+    ).rejects.toMatchObject({ code: "conflict" });
+    expect(await repository.get(second.identity)).toBeUndefined();
+    await repository.delete(foreign.identity);
+
+    const prefix = parseEncryptedRecordIdentityPrefix(
+      `v1:10:${first.identity.split(":")[2]}:${first.identity.split(":")[3]}:`,
+    );
+    await expect(
+      repository.applyConditionalBatch([], [], [prefix], undefined, 10, [
+        { envelope: second.envelope, type: "put" },
+      ]),
+    ).rejects.toMatchObject({ code: "conflict" });
+    expect(await repository.get(second.identity)).toBeUndefined();
+
+    const other = await openIndexedDbEncryptedRecordRepositoryForTesting(databaseName);
+    const outcomes = await Promise.allSettled([
+      repository.applyConditionalBatch([], [second.identity], [], undefined, 2, [
+        { envelope: second.envelope, type: "put" },
+      ]),
+      other.applyConditionalBatch([], [third.identity], [], undefined, 2, [
+        { envelope: third.envelope, type: "put" },
+      ]),
+    ]);
+    expect(outcomes.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter(({ status }) => status === "rejected")).toHaveLength(1);
+    expect(await repository.listIdentities(2)).toHaveLength(2);
+    repository.close();
+    other.close();
+    await deleteDatabase(databaseName);
+  }, 30_000);
+
   it("persists only envelopes, survives reopen, and isolates corruption", async () => {
     const databaseName = `neutron-test-${crypto.randomUUID()}`;
     const provider = await createLibsodiumProvider();
@@ -310,8 +418,47 @@ describe("encrypted IndexedDB repository", () => {
     });
     const unlocked = await unlockOfflineVault(provider, repository, password);
     expect(unlocked.isLocked).toBe(false);
-    unlocked.lock();
-    expect(unlocked.isLocked).toBe(true);
+    const vaultId = unlocked.metadata.vaults[0]?.id;
+    if (vaultId === undefined) throw new Error("missing vault");
+    const created = [];
+    for (const item of items) created.push(await unlocked.createItem(vaultId, item));
+    expect((await unlocked.listItems(vaultId)).items).toHaveLength(5);
+
+    const secondRepository = await openIndexedDbEncryptedRecordRepositoryForTesting(databaseName);
+    const secondSession = await unlockOfflineVault(provider, secondRepository, password);
+    const target = created[0];
+    if (target === undefined) throw new Error("missing item");
+    const race = await Promise.allSettled([
+      unlocked.updateItem(vaultId, target.id, 1n, 1, {
+        ...items[0],
+        title: "First race title",
+      }),
+      secondSession.updateItem(vaultId, target.id, 1n, 1, {
+        ...items[0],
+        title: "Second race title",
+      }),
+    ]);
+    expect(race.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(race.filter(({ status }) => status === "rejected")).toHaveLength(1);
+    const deleted = created[1];
+    if (deleted === undefined) throw new Error("missing item");
+    await unlocked.deleteItem(vaultId, deleted.id, 1n, 1);
+
+    const corruptTarget = created[2];
+    if (corruptTarget === undefined) throw new Error("missing item");
+    const payload = (await repository.list()).find(
+      (read) =>
+        read.status === "valid" &&
+        read.record.identity.split(":")[1] === "10" &&
+        read.record.identity.split(":")[3] === corruptTarget.id,
+    );
+    if (payload?.status !== "valid") throw new Error("missing payload");
+    const tampered = payload.record.envelope.slice();
+    tampered[tampered.length - 1] = (tampered[tampered.length - 1] as number) ^ 1;
+    await repository.put(tampered);
+    const isolated = await unlocked.listItems(vaultId);
+    expect(isolated.items).toHaveLength(3);
+    expect(isolated.issues).toEqual([{ code: "corrupt-item", id: corruptTarget.id }]);
 
     const raw = await rawRows(databaseName);
     const strings: string[] = [];
@@ -325,9 +472,39 @@ describe("encrypted IndexedDB repository", () => {
     ];
     for (const secret of enrollmentSecrets)
       expect(bytes.some((value) => contains(value, secret))).toBe(false);
+    for (const plaintext of [
+      ...sentinels,
+      "Synthetic note",
+      "Synthetic OTP",
+      "Synthetic codes",
+      "Synthetic JSON",
+      "First race title",
+      "Second race title",
+    ]) {
+      expect(strings.some((value) => value.includes(plaintext))).toBe(false);
+      const encodings = [
+        new TextEncoder().encode(plaintext),
+        utf16(plaintext, true),
+        utf16(plaintext, false),
+      ];
+      expect(bytes.some((value) => encodings.some((encoding) => contains(value, encoding)))).toBe(
+        false,
+      );
+    }
     parsedKit.accountId.fill(0);
     parsedKit.recoverySecret.fill(0);
+    unlocked.lock();
+    secondSession.lock();
+    expect(unlocked.isLocked).toBe(true);
     repository.close();
+    secondRepository.close();
+    const finalRepository = await openIndexedDbEncryptedRecordRepositoryForTesting(databaseName);
+    const finalSession = await unlockOfflineVault(provider, finalRepository, password);
+    const afterReload = await finalSession.listItems(vaultId);
+    expect(afterReload.items).toHaveLength(3);
+    expect(afterReload.issues).toEqual([{ code: "corrupt-item", id: corruptTarget.id }]);
+    finalSession.lock();
+    finalRepository.close();
     await deleteDatabase(databaseName);
   }, 30_000);
 });

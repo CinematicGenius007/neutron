@@ -1,6 +1,8 @@
+import type { VaultItem } from "@neutron/vault-domain/items";
 import type { FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { type BrowserSupport, detectBrowserSupport } from "./browser-support.js";
+import { ItemEditor } from "./item-editor.js";
 import type { LocalVaultMetadata } from "./local-vault.js";
 import {
   createVaultWorkerClient,
@@ -16,12 +18,15 @@ export interface VaultBroker
     | "beginEnrollment"
     | "cancelEnrollment"
     | "confirmEnrollment"
+    | "createItem"
+    | "deleteItem"
     | "getItem"
     | "isClosed"
     | "listItemSummaries"
     | "lock"
     | "terminate"
     | "unlock"
+    | "updateItem"
   > {}
 
 export interface VaultAppProps {
@@ -31,11 +36,14 @@ export interface VaultAppProps {
 }
 
 type Screen = "locked" | "enroll" | "confirm-recovery" | "unlocked";
+type EditorTarget =
+  | Readonly<{ identity: number; kind: "create" }>
+  | Readonly<{ base: VaultWorkerItemRecord; kind: "edit" }>;
 
 const genericErrors: Readonly<Record<string, string>> = Object.freeze({
   "already-initialized": "A vault already exists in this browser.",
   "confirmation-failed": "The recovery kit did not match. Enrollment was cancelled.",
-  conflict: "The item changed elsewhere. Lock and try again.",
+  conflict: "The item changed elsewhere.",
   "corrupt-item": "This item could not be authenticated.",
   "corrupt-state": "The local vault could not be authenticated.",
   "enrollment-state": "That enrollment step is no longer available.",
@@ -56,15 +64,20 @@ function safeMessage(error: unknown): string {
     : "The operation could not be completed.";
 }
 
-function itemDetails(record: VaultWorkerItemRecord) {
+function itemDetails(record: VaultWorkerItemRecord, onEdit: () => void) {
   const item = record.item;
   return (
     <article className="item-detail" aria-labelledby="item-detail-title">
       <div className="section-heading">
         <div>
           <p className="eyebrow">{item.type}</p>
-          <h2 id="item-detail-title">{item.title}</h2>
+          <h2 id="item-detail-title" ref={focusHeading} tabIndex={-1}>
+            {item.title}
+          </h2>
         </div>
+        <button type="button" className="secondary" onClick={onEdit}>
+          Edit item
+        </button>
       </div>
       <dl>
         {Object.entries(item).map(([key, value]) => {
@@ -94,7 +107,11 @@ export function VaultApp({
   support,
 }: VaultAppProps) {
   const broker = useRef<VaultBroker | undefined>(undefined);
+  const focusCreateAfterRender = useRef(false);
+  const focusItemsAfterRender = useRef(false);
+  const nextEditorIdentity = useRef(1);
   const operationEpoch = useRef(0);
+  const operationInFlight = useRef(false);
   const [checkedSupport, setCheckedSupport] = useState<BrowserSupport | undefined>(support);
   const [screen, setScreen] = useState<Screen>("locked");
   const [busy, setBusy] = useState(false);
@@ -106,6 +123,7 @@ export function VaultApp({
   const [metadata, setMetadata] = useState<LocalVaultMetadata>();
   const [page, setPage] = useState<VaultWorkerSummaryPage>();
   const [selected, setSelected] = useState<VaultWorkerItemRecord>();
+  const [editor, setEditor] = useState<EditorTarget>();
 
   useEffect(() => {
     if (support !== undefined) {
@@ -158,29 +176,39 @@ export function VaultApp({
     setMetadata(undefined);
     setPage(undefined);
     setSelected(undefined);
+    setEditor(undefined);
   }
 
   async function loadPage(
     session: LocalVaultMetadata,
     epoch: number,
     cursor?: string,
+    active: VaultBroker = currentBroker(),
   ): Promise<void> {
     const vaultId = session.vaults[0]?.id;
     if (vaultId === undefined) throw new Error("missing vault");
-    const nextPage = await currentBroker().listItemSummaries(vaultId, 24, cursor);
+    const nextPage = await active.listItemSummaries(vaultId, 24, cursor);
     if (operationEpoch.current === epoch) setPage(nextPage);
   }
 
-  async function run(action: (epoch: number) => Promise<void>): Promise<void> {
+  async function run(
+    action: (epoch: number) => Promise<void>,
+    errorMessage: (cause: unknown) => string = safeMessage,
+  ): Promise<void> {
+    if (operationInFlight.current) return;
     const epoch = operationEpoch.current;
+    operationInFlight.current = true;
     setBusy(true);
     setError(undefined);
     try {
       await action(epoch);
     } catch (cause) {
-      if (operationEpoch.current === epoch) setError(safeMessage(cause));
+      if (operationEpoch.current === epoch) setError(errorMessage(cause));
     } finally {
-      if (operationEpoch.current === epoch) setBusy(false);
+      if (operationEpoch.current === epoch) {
+        operationInFlight.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -229,6 +257,7 @@ export function VaultApp({
   async function cancelEnrollment(): Promise<void> {
     const active = broker.current;
     operationEpoch.current += 1;
+    operationInFlight.current = false;
     resetSecrets();
     setBusy(false);
     setScreen("locked");
@@ -245,6 +274,7 @@ export function VaultApp({
   async function lock(): Promise<void> {
     const active = broker.current;
     operationEpoch.current += 1;
+    operationInFlight.current = false;
     resetSecrets();
     setBusy(false);
     setError(undefined);
@@ -265,8 +295,97 @@ export function VaultApp({
       const vaultId = metadata.vaults[0]?.id;
       if (vaultId === undefined) throw new Error("missing vault");
       const item = await currentBroker().getItem(vaultId, id);
-      if (operationEpoch.current === epoch) setSelected(item);
+      if (operationEpoch.current === epoch) {
+        setSelected(item);
+        setEditor(undefined);
+      }
     });
+  }
+
+  function vaultId(session: LocalVaultMetadata): string {
+    const id = session.vaults[0]?.id;
+    if (id === undefined) throw new Error("missing vault");
+    return id;
+  }
+
+  function beginCreate(): void {
+    const identity = nextEditorIdentity.current;
+    nextEditorIdentity.current += 1;
+    setSelected(undefined);
+    setEditor({ identity, kind: "create" });
+    setError(undefined);
+  }
+
+  function saveEditorItem(item: VaultItem): void {
+    const target = editor;
+    const session = metadata;
+    if (target === undefined || session === undefined) return;
+    if (target.kind === "edit" && target.base.item.type !== item.type) {
+      setError("The operation could not be completed.");
+      return;
+    }
+    void run(
+      async (epoch) => {
+        const active = currentBroker();
+        const id = vaultId(session);
+        const revision =
+          target.kind === "create"
+            ? await active.createItem(id, item)
+            : await active.updateItem(
+                id,
+                target.base.id,
+                target.base.generation,
+                target.base.keyVersion,
+                item,
+              );
+        if (operationEpoch.current !== epoch) return;
+        setSelected({ ...revision, item });
+        setEditor(undefined);
+        setPage(undefined);
+        try {
+          await loadPage(session, epoch, undefined, active);
+        } catch {
+          if (operationEpoch.current === epoch)
+            setError("The item was saved, but the item list could not refresh.");
+        }
+      },
+      (cause) =>
+        safeMessage(cause) === genericErrors.conflict
+          ? "The item changed elsewhere. Your draft was not saved."
+          : safeMessage(cause),
+    );
+  }
+
+  function deleteEditorItem(): void {
+    const target = editor;
+    const session = metadata;
+    if (target?.kind !== "edit" || session === undefined) return;
+    void run(
+      async (epoch) => {
+        const active = currentBroker();
+        await active.deleteItem(
+          vaultId(session),
+          target.base.id,
+          target.base.generation,
+          target.base.keyVersion,
+        );
+        if (operationEpoch.current !== epoch) return;
+        focusItemsAfterRender.current = true;
+        setSelected(undefined);
+        setEditor(undefined);
+        setPage(undefined);
+        try {
+          await loadPage(session, epoch, undefined, active);
+        } catch {
+          if (operationEpoch.current === epoch)
+            setError("The item was deleted, but the item list could not refresh.");
+        }
+      },
+      (cause) =>
+        safeMessage(cause) === genericErrors.conflict
+          ? "The item changed elsewhere. It was not deleted."
+          : safeMessage(cause),
+    );
   }
 
   if (checkedSupport === undefined) {
@@ -449,8 +568,35 @@ export function VaultApp({
           <div className="vault-grid">
             <section className="item-list" aria-labelledby="items-title">
               <div className="section-heading">
-                <h2 id="items-title">Items</h2>
-                <span>{page?.items.length ?? 0} shown</span>
+                <div>
+                  <h2
+                    id="items-title"
+                    ref={(node) => {
+                      if (node !== null && focusItemsAfterRender.current) {
+                        focusItemsAfterRender.current = false;
+                        node.focus();
+                      }
+                    }}
+                    tabIndex={-1}
+                  >
+                    Items
+                  </h2>
+                  <span>{page?.items.length ?? 0} shown</span>
+                </div>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  ref={(node) => {
+                    if (node !== null && focusCreateAfterRender.current) {
+                      focusCreateAfterRender.current = false;
+                      node.focus();
+                    }
+                  }}
+                  onClick={beginCreate}
+                >
+                  Create item
+                </button>
               </div>
               {page === undefined || page.items.length === 0 ? (
                 <p className="empty">No items on this page.</p>
@@ -483,14 +629,34 @@ export function VaultApp({
               )}
             </section>
             <section className="detail-panel" aria-live="polite">
-              {selected === undefined ? (
+              {editor !== undefined ? (
+                <ItemEditor
+                  key={
+                    editor.kind === "create"
+                      ? `create:${editor.identity}`
+                      : `edit:${editor.base.id}:${editor.base.generation}:${editor.base.keyVersion}`
+                  }
+                  busy={busy}
+                  {...(editor.kind === "edit" ? { initial: editor.base.item } : {})}
+                  onCancel={() => {
+                    if (editor.kind === "create") focusCreateAfterRender.current = true;
+                    setEditor(undefined);
+                    setError(undefined);
+                  }}
+                  {...(editor.kind === "edit" ? { onDelete: deleteEditorItem } : {})}
+                  onSave={saveEditorItem}
+                />
+              ) : selected === undefined ? (
                 <div className="empty-detail">
                   <p className="eyebrow">No item selected</p>
                   <h2>Choose an item to decrypt it</h2>
                   <p>Summaries contain only title, type, and revision metadata.</p>
                 </div>
               ) : (
-                itemDetails(selected)
+                itemDetails(selected, () => {
+                  setEditor({ base: selected, kind: "edit" });
+                  setError(undefined);
+                })
               )}
             </section>
           </div>

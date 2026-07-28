@@ -81,6 +81,148 @@ async function waitForNoWorkers(page) {
   assert.equal(page.workers().length, 0);
 }
 
+async function activateWithKeyboard(page, locator) {
+  await locator.focus();
+  await page.keyboard.press("Enter");
+}
+
+async function externalUpdate(page, password, matchTitle, replacementTitle) {
+  return page.evaluate(
+    async ({ matchTitle, password, replacementTitle }) => {
+      const worker = globalThis.__neutronCreateCapturedWorker();
+      const call = (message) =>
+        new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error("worker timeout")), 5_000);
+          worker.addEventListener("message", function receive(event) {
+            if (event.data?.requestId !== message.requestId) return;
+            worker.removeEventListener("message", receive);
+            clearTimeout(timeout);
+            event.data.ok ? resolve(event.data) : reject(new Error(event.data.error));
+          });
+          worker.postMessage(message);
+        });
+      try {
+        const unlocked = await call({
+          protocol: 1,
+          requestId: "1",
+          sessionEpoch: "0",
+          operation: "unlock",
+          input: { password },
+        });
+        const vaultId = unlocked.result.metadata.vaults[0].id;
+        const listed = await call({
+          protocol: 1,
+          requestId: "2",
+          sessionEpoch: "1",
+          operation: "list-item-summaries",
+          input: { vaultId, limit: 24 },
+        });
+        const summary = listed.result.items.find((item) => item.title === matchTitle);
+        if (summary === undefined) throw new Error("target summary missing");
+        const read = await call({
+          protocol: 1,
+          requestId: "3",
+          sessionEpoch: "1",
+          operation: "get-item",
+          input: { vaultId, itemId: summary.id },
+        });
+        const base = read.result.item;
+        if (base === null) throw new Error("target item missing");
+        const updated = await call({
+          protocol: 1,
+          requestId: "4",
+          sessionEpoch: "1",
+          operation: "update-item",
+          input: {
+            vaultId,
+            itemId: base.id,
+            generation: base.generation,
+            keyVersion: base.keyVersion,
+            item: { ...base.item, title: replacementTitle },
+          },
+        });
+        await call({
+          protocol: 1,
+          requestId: "5",
+          sessionEpoch: "1",
+          operation: "lock",
+          input: {},
+        });
+        return updated.result.revision;
+      } finally {
+        worker.terminate();
+      }
+    },
+    { matchTitle, password, replacementTitle },
+  );
+}
+
+async function rawDatabaseDump(page) {
+  return page.evaluate(async () => {
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("neutron-vault-v1", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error("database open failed"));
+    });
+    const transaction = database.transaction("encrypted-records", "readonly");
+    const store = transaction.objectStore("encrypted-records");
+    const result = (request) =>
+      new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error ?? new Error("database read failed"));
+      });
+    const [keys, rows] = await Promise.all([result(store.getAllKeys()), result(store.getAll())]);
+    database.close();
+    const snapshot = (value) => {
+      if (value instanceof ArrayBuffer) {
+        const bytes = new Uint8Array(value);
+        return {
+          hex: [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join(""),
+          text: new TextDecoder().decode(bytes),
+        };
+      }
+      if (ArrayBuffer.isView(value))
+        return snapshot(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+      if (Array.isArray(value)) return value.map(snapshot);
+      if (typeof value === "object" && value !== null)
+        return Object.fromEntries(
+          Object.entries(value).map(([key, entry]) => [key, snapshot(entry)]),
+        );
+      return value;
+    };
+    return JSON.stringify({ keys: snapshot(keys), rows: snapshot(rows) });
+  });
+}
+
+async function runtimeSurfaceDump(page) {
+  return page.evaluate(async () =>
+    JSON.stringify({
+      cacheNames: await caches.keys(),
+      cookie: document.cookie,
+      formValues: [...document.querySelectorAll("input, textarea")].map((input) => input.value),
+      historyState: history.state,
+      html: document.documentElement.outerHTML,
+      localStorage: Object.entries(localStorage),
+      performanceUrls: performance.getEntriesByType("resource").map((entry) => entry.name),
+      sessionStorage: Object.entries(sessionStorage),
+      title: document.title,
+      url: location.href,
+      windowName: globalThis.name,
+    }),
+  );
+}
+
+function assertNoSentinels(value, sentinels, label) {
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  for (const sentinel of sentinels) {
+    assert.equal(text.includes(sentinel), false, `${label} contains plaintext sentinel`);
+    const hex = [...new TextEncoder().encode(sentinel)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    assert.equal(text.includes(hex), false, `${label} contains hex plaintext sentinel`);
+  }
+}
+
 const build = await verifyBuild();
 const publicFiles = new Set(build.files.filter((file) => !file.startsWith(".vite/")));
 const allowedPaths = new Set([...publicFiles].map((file) => `/${file}`));
@@ -110,8 +252,11 @@ try {
   });
   const page = await context.newPage();
   const errors = [];
+  const consoleMessages = [];
   const requested = new Set();
+  const requestRecords = [];
   page.on("console", (message) => {
+    consoleMessages.push(message.text());
     if (message.type() === "error") errors.push(`console: ${message.text()}`);
   });
   page.on("pageerror", (error) => errors.push(`page: ${error.message}`));
@@ -121,6 +266,11 @@ try {
     assert.equal(url.origin, origin, `cross-origin request: ${url.href}`);
     assert(allowedPaths.has(url.pathname), `unexpected production request: ${url.pathname}`);
     requested.add(url.pathname);
+    requestRecords.push({
+      headers: request.headers(),
+      postData: request.postData(),
+      url: request.url(),
+    });
   });
 
   const navigation = await page.goto(origin, { waitUntil: "networkidle" });
@@ -136,82 +286,127 @@ try {
   await page.locator("#new-password-again").fill(password);
   await page.getByRole("button", { name: "Continue" }).click();
   const recoveryKit = await page.getByRole("status", { name: "Recovery kit" }).textContent();
-  assert(recoveryKit?.startsWith("ntrk1"));
+  assert.equal(typeof recoveryKit, "string");
+  assert(recoveryKit.startsWith("ntrk1"));
   await page.locator("#recovery-confirmation").fill(recoveryKit);
   await page.getByRole("button", { name: "Confirm and create vault" }).click();
   await page.getByRole("heading", { name: "Your vault" }).waitFor();
 
-  const seeded = await page.evaluate(
-    async ({ password }) => {
-      const worker = globalThis.__neutronCreateCapturedWorker();
-      const call = (message) =>
-        new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error("worker timeout")), 5_000);
-          worker.addEventListener("message", function receive(event) {
-            if (event.data?.requestId !== message.requestId) return;
-            worker.removeEventListener("message", receive);
-            clearTimeout(timeout);
-            event.data.ok ? resolve(event.data) : reject(new Error(event.data.error));
-          });
-          worker.postMessage(message);
-        });
-      try {
-        const unlocked = await call({
-          protocol: 1,
-          requestId: "1",
-          sessionEpoch: "0",
-          operation: "unlock",
-          input: { password },
-        });
-        const vaultId = unlocked.result.metadata.vaults[0].id;
-        const created = await call({
-          protocol: 1,
-          requestId: "2",
-          sessionEpoch: "1",
-          operation: "create-item",
-          input: {
-            vaultId,
-            item: {
-              schemaVersion: 1,
-              type: "login",
-              title: "Production fixture",
-              tags: [],
-              username: "fixture@example.invalid",
-              password: "production-point-secret",
-            },
-          },
-        });
-        await call({
-          protocol: 1,
-          requestId: "3",
-          sessionEpoch: "1",
-          operation: "lock",
-          input: {},
-        });
-        return { id: created.result.revision.id, vaultId };
-      } finally {
-        worker.terminate();
-      }
-    },
-    { password },
-  );
-  assert.match(seeded.id, /^[0-9a-f]{32}$/);
+  const originalTitle = "Production CRUD fixture";
+  const username = "production-crud-username";
+  const itemSecret = "production-crud-secret";
+  const tag = "production-crud-tag";
+  const unsavedDraft = "Production unsaved draft";
+  const externalWinnerOne = "Production external winner one";
+  const externalWinnerTwo = "Production external winner two";
+  const savedTitle = "Production saved title";
+  const updatedSecret = "production-updated-secret";
+  const sentinels = [
+    password,
+    recoveryKit,
+    originalTitle,
+    username,
+    itemSecret,
+    tag,
+    unsavedDraft,
+    externalWinnerOne,
+    externalWinnerTwo,
+    savedTitle,
+    updatedSecret,
+  ];
 
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
+  const createForm = page.getByRole("form", { name: "Create item" });
+  await page.setViewportSize({ width: 320, height: 640 });
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
+    true,
+  );
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await createForm.getByLabel("Title").fill(originalTitle);
+  await createForm.getByLabel("Tags, one per line").fill(tag);
+  await createForm.getByLabel("Username").fill(username);
+  await createForm.getByLabel("Password").fill(itemSecret);
+  await activateWithKeyboard(page, createForm.getByRole("button", { name: "Create item" }));
+  await page.getByRole("heading", { name: originalTitle }).waitFor();
+  await page.getByText(/Revision 1 · key version 1/).waitFor();
+
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Edit item" }));
+  const staleUpdateForm = page.getByRole("form", { name: "Edit item" });
+  await staleUpdateForm.getByLabel("Title").fill(unsavedDraft);
+  const firstExternalRevision = await externalUpdate(
+    page,
+    password,
+    originalTitle,
+    externalWinnerOne,
+  );
+  assert.equal(firstExternalRevision.generation, "2");
+  await activateWithKeyboard(page, staleUpdateForm.getByRole("button", { name: "Save changes" }));
+  await page.getByText(/Your draft was not saved/).waitFor();
+  assert.equal(await staleUpdateForm.getByLabel("Title").inputValue(), unsavedDraft);
+  await activateWithKeyboard(page, staleUpdateForm.getByRole("button", { name: "Cancel editing" }));
+
+  await activateWithKeyboard(page, page.getByRole("button", { name: new RegExp(originalTitle) }));
+  await page.getByRole("heading", { name: externalWinnerOne }).waitFor();
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Edit item" }));
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Delete item" }));
+  const deleteGroup = page.getByRole("group", { name: "Delete this item?" });
+  const secondExternalRevision = await externalUpdate(
+    page,
+    password,
+    externalWinnerOne,
+    externalWinnerTwo,
+  );
+  assert.equal(secondExternalRevision.generation, "3");
+  await activateWithKeyboard(page, deleteGroup.getByRole("button", { name: "Confirm delete" }));
+  await page.getByText(/It was not deleted/).waitFor();
+  await activateWithKeyboard(page, deleteGroup.getByRole("button", { name: "Cancel deletion" }));
+  await activateWithKeyboard(
+    page,
+    page.getByRole("form", { name: "Edit item" }).getByRole("button", { name: "Cancel editing" }),
+  );
+
+  await activateWithKeyboard(page, page.getByRole("button", { name: new RegExp(originalTitle) }));
+  await page.getByRole("heading", { name: externalWinnerTwo }).waitFor();
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Edit item" }));
+  const successfulEdit = page.getByRole("form", { name: "Edit item" });
+  await successfulEdit.getByLabel("Title").fill(savedTitle);
+  await successfulEdit.getByLabel("Password").fill(updatedSecret);
+  await activateWithKeyboard(page, successfulEdit.getByRole("button", { name: "Save changes" }));
+  await page.getByRole("heading", { name: savedTitle }).waitFor();
+  await page.getByText(/Revision 4 · key version 1/).waitFor();
+
+  assertNoSentinels(await rawDatabaseDump(page), sentinels, "live IndexedDB");
+
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Edit item" }));
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Delete item" }));
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Cancel deletion" }));
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Delete item" }));
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Confirm delete" }));
+  await page.getByText("No items on this page.").waitFor();
+  await page.getByRole("heading", { name: "Choose an item to decrypt it" }).waitFor();
+  assertNoSentinels(await rawDatabaseDump(page), sentinels, "deleted IndexedDB");
+  assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "post-delete runtime");
+
+  const activeWorkerBeforeLock = page.workers()[0];
+  assert(activeWorkerBeforeLock !== undefined, "unlocked vault worker is absent");
   await page.getByRole("button", { name: "Lock now" }).click();
   await page.getByRole("heading", { name: "Welcome back" }).waitFor();
-  assert.equal((await page.locator("body").textContent()).includes(recoveryKit), false);
+  assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "locked runtime");
+  await waitForNoWorkers(page);
   await page.reload({ waitUntil: "networkidle" });
   await page.locator("#unlock-password").fill(password);
   await page.getByRole("button", { name: "Unlock vault" }).click();
-  await page.getByRole("button", { name: /Production fixture/ }).click();
-  await page.getByText("production-point-secret").waitFor();
+  await page.getByText("No items on this page.").waitFor();
+  const freshWorker = page.workers()[0];
+  assert(freshWorker !== undefined, "fresh unlock worker is absent");
+  assert.notEqual(freshWorker, activeWorkerBeforeLock);
   await page.getByRole("button", { name: "Lock now" }).click();
   await page.getByRole("heading", { name: "Welcome back" }).waitFor();
-  assert.equal(
-    (await page.locator("body").textContent()).includes("production-point-secret"),
-    false,
-  );
   await waitForNoWorkers(page);
+
+  assertNoSentinels(requestRecords, sentinels, "network requests");
+  assertNoSentinels(consoleMessages, sentinels, "console output");
 
   for (const file of build.files.filter((entry) => !entry.startsWith(".vite/"))) {
     const response = await context.request.get(`${origin}/${file === "index.html" ? "" : file}`, {
@@ -229,6 +424,12 @@ try {
       file.startsWith("assets/")
         ? "public, max-age=31536000, immutable"
         : "no-cache, max-age=0, must-revalidate",
+    );
+    const body = await response.body();
+    assertNoSentinels(
+      { headers, hex: body.toString("hex"), text: body.toString("utf8"), url: response.url() },
+      sentinels,
+      `${file} response`,
     );
   }
   assert(requested.has(`/${build.workerFile}`), "production worker was not requested");

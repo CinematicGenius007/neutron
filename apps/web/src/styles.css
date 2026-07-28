@@ -18,6 +18,7 @@ body {
 }
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -35,6 +36,7 @@ button:hover {
 }
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
 textarea:focus-visible {
   outline: 3px solid #b8c7ff;
   outline-offset: 3px;
@@ -53,6 +55,7 @@ button.danger {
   color: #50131b;
 }
 input,
+select,
 textarea {
   width: 100%;
   border: 1px solid #405376;
@@ -60,6 +63,13 @@ textarea {
   background: #0c1729;
   color: #fff;
   padding: 0.8rem 0.9rem;
+}
+select {
+  width: 100%;
+}
+input[type="checkbox"] {
+  width: auto;
+  margin: 0;
 }
 textarea {
   min-height: 7rem;
@@ -194,6 +204,9 @@ h1 {
   background: rgba(13, 25, 44, 0.9);
   padding: 1.25rem;
 }
+.detail-panel {
+  min-width: 0;
+}
 .item-list ul {
   list-style: none;
   margin: 0;
@@ -238,6 +251,43 @@ h1 {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+.item-editor form {
+  margin-top: 1.25rem;
+}
+.item-editor .error {
+  width: 100%;
+}
+.check-label {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 650;
+}
+.code-input {
+  min-height: 14rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  margin-top: 1.25rem;
+}
+.editor-actions button {
+  flex: 1 1 10rem;
+  margin: 0;
+}
+.delete-start,
+.delete-confirmation {
+  margin-top: 1.5rem;
+}
+.delete-confirmation {
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  border-top: 1px solid #273a5d;
+  padding-top: 1.25rem;
+}
 
 @media (max-width: 760px) {
   .centered-shell,
@@ -253,6 +303,12 @@ h1 {
   }
   .empty-detail {
     min-height: 12rem;
+  }
+  .section-heading {
+    align-items: flex-start;
+  }
+  .editor-actions button {
+    flex-basis: 100%;
   }
 }
 

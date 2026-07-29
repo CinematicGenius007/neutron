@@ -5,11 +5,13 @@ import { type BrowserSupport, detectBrowserSupport } from "./browser-support.js"
 import { ItemEditor } from "./item-editor.js";
 import type { LocalVaultMetadata } from "./local-vault.js";
 import type { PasswordGeneratorOptionsV1 } from "./password-generator.js";
+import { isTotpResultFresh } from "./totp.js";
 import {
   createVaultWorkerClient,
   type VaultWorkerClient,
   type VaultWorkerItemRecord,
   type VaultWorkerSummaryPage,
+  type VaultWorkerTotpCode,
   verifyVaultModuleWorkerSupport,
 } from "./vault-worker-client.js";
 
@@ -31,6 +33,10 @@ export interface VaultBroker
   > {}
 
 export interface VaultBroker {
+  readonly computeTotp?: (
+    vaultId: string,
+    record: VaultWorkerItemRecord,
+  ) => Promise<VaultWorkerTotpCode>;
   readonly generatePassword?: (options: PasswordGeneratorOptionsV1) => Promise<string>;
 }
 
@@ -69,7 +75,125 @@ function safeMessage(error: unknown): string {
     : "The operation could not be completed.";
 }
 
-function itemDetails(record: VaultWorkerItemRecord, onEdit: () => void) {
+function TotpCodeDisplay({
+  onCompute,
+}: Readonly<{
+  onCompute: () => Promise<VaultWorkerTotpCode>;
+}>) {
+  const compute = useRef(onCompute);
+  compute.current = onCompute;
+  const [code, setCode] = useState<VaultWorkerTotpCode>();
+  const [codeError, setCodeError] = useState<string>();
+
+  useEffect(() => {
+    let active = true;
+    let expiryRetries = 0;
+    let pending = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    function clearTimeoutIfPresent(): void {
+      if (timeout !== undefined) clearTimeout(timeout);
+      timeout = undefined;
+    }
+
+    async function refresh(): Promise<void> {
+      if (!active || pending) return;
+      pending = true;
+      clearTimeoutIfPresent();
+      setCode(undefined);
+      setCodeError(undefined);
+      let retryExpired = false;
+      try {
+        const next = await compute.current();
+        if (!active) return;
+        if (!isTotpResultFresh(next, Date.now())) {
+          if (expiryRetries < 1) {
+            expiryRetries += 1;
+            retryExpired = true;
+          } else {
+            setCodeError("The current TOTP code could not be calculated.");
+          }
+          return;
+        }
+        expiryRetries = 0;
+        setCode(next);
+        const delay = Math.max(0, Number(next.expiresAtUnixSeconds) * 1_000 - Date.now());
+        timeout = setTimeout(() => {
+          setCode(undefined);
+          void refresh();
+        }, delay);
+      } catch (cause) {
+        if (!active) return;
+        const code =
+          typeof cause === "object" && cause !== null && "code" in cause
+            ? (cause as { code?: unknown }).code
+            : undefined;
+        if (code === "expired-result" && expiryRetries < 1) {
+          expiryRetries += 1;
+          retryExpired = true;
+          return;
+        }
+        const value = safeMessage(cause);
+        setCodeError(
+          value === genericErrors.conflict
+            ? "This TOTP item changed. Reopen it to calculate a current code."
+            : "The current TOTP code could not be calculated.",
+        );
+      } finally {
+        pending = false;
+        if (active && retryExpired) void refresh();
+      }
+    }
+
+    function revalidate(): void {
+      if (!active || pending) return;
+      setCode(undefined);
+      void refresh();
+    }
+
+    function visibilityChanged(): void {
+      if (document.visibilityState === "visible") revalidate();
+    }
+
+    globalThis.addEventListener("focus", revalidate);
+    document.addEventListener("visibilitychange", visibilityChanged);
+    void refresh();
+    return () => {
+      active = false;
+      clearTimeoutIfPresent();
+      globalThis.removeEventListener("focus", revalidate);
+      document.removeEventListener("visibilitychange", visibilityChanged);
+    };
+  }, []);
+
+  return (
+    <section className="totp-code" aria-labelledby="totp-code-title">
+      <h3 id="totp-code-title">Current verification code</h3>
+      {code === undefined ? null : (
+        <output
+          aria-live="polite"
+          data-expires-at={code.expiresAtUnixSeconds}
+          data-valid-from={code.validFromUnixSeconds}
+        >
+          {code.code}
+        </output>
+      )}
+      {code === undefined && codeError === undefined ? <p role="status">Calculating…</p> : null}
+      {codeError === undefined ? null : (
+        <p className="error" role="alert">
+          {codeError}
+        </p>
+      )}
+      <p>Codes refresh automatically. If a code is rejected, check this device’s clock.</p>
+    </section>
+  );
+}
+
+function itemDetails(
+  record: VaultWorkerItemRecord,
+  onEdit: () => void,
+  totpCode?: React.ReactNode,
+) {
   const item = record.item;
   return (
     <article className="item-detail" aria-labelledby="item-detail-title">
@@ -84,6 +208,7 @@ function itemDetails(record: VaultWorkerItemRecord, onEdit: () => void) {
           Edit item
         </button>
       </div>
+      {totpCode}
       <dl>
         {Object.entries(item).map(([key, value]) => {
           if (key === "schemaVersion" || key === "type" || key === "title") return null;
@@ -366,6 +491,14 @@ export function VaultApp({
     const generate = active.generatePassword;
     if (generate === undefined) throw new Error("generator unavailable");
     return generate.call(active, options);
+  }
+
+  async function computeSelectedTotp(record: VaultWorkerItemRecord): Promise<VaultWorkerTotpCode> {
+    const session = metadata;
+    const active = currentBroker();
+    const compute = active.computeTotp;
+    if (session === undefined || compute === undefined) throw new Error("TOTP unavailable");
+    return compute.call(active, vaultId(session), record);
   }
 
   function deleteEditorItem(): void {
@@ -666,10 +799,19 @@ export function VaultApp({
                   <p>Summaries contain only title, type, and revision metadata.</p>
                 </div>
               ) : (
-                itemDetails(selected, () => {
-                  setEditor({ base: selected, kind: "edit" });
-                  setError(undefined);
-                })
+                itemDetails(
+                  selected,
+                  () => {
+                    setEditor({ base: selected, kind: "edit" });
+                    setError(undefined);
+                  },
+                  selected.item.type === "totp" ? (
+                    <TotpCodeDisplay
+                      key={`${selected.id}:${selected.generation}:${selected.keyVersion}`}
+                      onCompute={() => computeSelectedTotp(selected)}
+                    />
+                  ) : undefined,
+                )
               )}
             </section>
           </div>

@@ -266,6 +266,24 @@ h1 {
 .password-generator .field-hint {
   margin: 0;
 }
+.totp-code {
+  border: 1px solid #405376;
+  border-radius: 0.75rem;
+  margin: 1rem 0;
+  padding: 1rem;
+}
+.totp-code h3,
+.totp-code p {
+  margin: 0.5rem 0;
+}
+.totp-code output {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: clamp(1.75rem, 8vw, 2.5rem);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.12em;
+  overflow-wrap: anywhere;
+}
 .check-label {
   display: flex;
   align-items: center;

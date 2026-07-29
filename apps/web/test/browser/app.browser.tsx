@@ -1,7 +1,7 @@
 import type { VaultItem } from "@neutron/vault-domain/items";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { VaultApp, type VaultBroker } from "../../src/app.js";
 import type { PasswordGeneratorOptionsV1 } from "../../src/password-generator.js";
 
@@ -12,12 +12,26 @@ const vaultId = "1".repeat(32);
 const itemId = "2".repeat(32);
 const secret = "synthetic-rendered-secret";
 const generatedSecret = "A0!a".repeat(5);
+const browserTotp: Extract<VaultItem, { type: "totp" }> = {
+  schemaVersion: 1,
+  type: "totp",
+  title: "Synthetic TOTP",
+  tags: [],
+  secretBase32: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+  algorithm: "SHA1",
+  digits: 8,
+  period: 30,
+};
 const supported = Object.freeze({ missing: Object.freeze([]), supported: true });
 
 class FakeBroker implements VaultBroker {
   isClosed = false;
   lockCalls = 0;
   readonly createCalls: Array<{ item: VaultItem; vaultId: string }> = [];
+  readonly computeTotpCalls: Array<{
+    record: Parameters<NonNullable<VaultBroker["computeTotp"]>>[1];
+    vaultId: string;
+  }> = [];
   readonly deleteCalls: Array<{
     generation: string;
     itemId: string;
@@ -46,6 +60,30 @@ class FakeBroker implements VaultBroker {
   async createItem(requestVaultId: string, item: VaultItem) {
     this.createCalls.push({ item, vaultId: requestVaultId });
     return { id: itemId, generation: "1", keyVersion: 1 };
+  }
+
+  async computeTotp(
+    requestVaultId: string,
+    record: Parameters<NonNullable<VaultBroker["computeTotp"]>>[1],
+  ) {
+    if (record.item.type !== "totp")
+      throw Object.assign(new Error("wrong item type"), { code: "invalid-item-reference" });
+    this.computeTotpCalls.push({ record, vaultId: requestVaultId });
+    const now = Math.floor(Date.now() / 1_000);
+    const validFrom = Math.floor(now / record.item.period) * record.item.period;
+    return {
+      itemId: record.id,
+      generation: record.generation,
+      keyVersion: record.keyVersion,
+      algorithm: record.item.algorithm,
+      digits: record.item.digits,
+      period: record.item.period,
+      code: Math.floor(now / record.item.period)
+        .toString()
+        .padStart(record.item.digits, "0"),
+      validFromUnixSeconds: validFrom.toString(),
+      expiresAtUnixSeconds: (validFrom + record.item.period).toString(),
+    };
   }
 
   async deleteItem(
@@ -203,6 +241,7 @@ afterEach(async () => {
   container?.remove();
   root = undefined;
   container = undefined;
+  vi.useRealTimers();
 });
 
 describe("React vault shell", () => {
@@ -296,6 +335,62 @@ describe("React vault shell", () => {
     );
     expect(container?.textContent).toContain("Welcome back");
     expect(container?.textContent).not.toContain(secret);
+  });
+
+  it("cannot render a TOTP calculation that completes after lock", async () => {
+    let resolveTotp: ((code: Awaited<ReturnType<FakeBroker["computeTotp"]>>) => void) | undefined;
+    class DelayedTotpBroker extends FakeBroker {
+      override async listItemSummaries() {
+        return {
+          issues: [],
+          items: [
+            {
+              id: itemId,
+              generation: "1",
+              keyVersion: 1,
+              title: browserTotp.title,
+              type: "totp" as const,
+            },
+          ],
+        };
+      }
+
+      override async getItem() {
+        return { id: itemId, generation: "1", keyVersion: 1, item: browserTotp };
+      }
+
+      override async computeTotp() {
+        return new Promise<Awaited<ReturnType<FakeBroker["computeTotp"]>>>((resolve) => {
+          resolveTotp = resolve;
+        });
+      }
+    }
+    const broker = new DelayedTotpBroker();
+    await render(broker);
+    await enter("unlock-password", "synthetic master password");
+    await click("Unlock vault");
+    await click(browserTotp.title);
+    await act(async () => Promise.resolve());
+    expect(container?.textContent).toContain("Calculating…");
+    await click("Lock now");
+    const now = Math.floor(Date.now() / 1_000);
+    const validFrom = Math.floor(now / browserTotp.period) * browserTotp.period;
+    await act(async () =>
+      resolveTotp?.({
+        itemId,
+        generation: "1",
+        keyVersion: 1,
+        algorithm: "SHA1",
+        digits: 8,
+        period: 30,
+        code: "12345678",
+        validFromUnixSeconds: validFrom.toString(),
+        expiresAtUnixSeconds: (validFrom + 30).toString(),
+      }),
+    );
+    expect(container?.textContent).toContain("Welcome back");
+    expect(container?.textContent).not.toContain("12345678");
+    expect(container?.textContent).not.toContain(browserTotp.secretBase32);
   });
 
   it("creates every v1 item type from locally validated drafts", async () => {
@@ -421,6 +516,44 @@ describe("React vault shell", () => {
       digits: true,
       symbols: false,
     });
+  });
+
+  it("displays, expires, and revalidates an exact-revision TOTP code", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(59_000));
+    const broker = new FakeBroker();
+    await render(broker);
+    await enter("unlock-password", "synthetic master password");
+    await click("Unlock vault");
+    await click("Create item");
+    await choose("item-type", "totp");
+    await enter("item-title", "Rendered TOTP");
+    await enter("item-totp-secret", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ");
+    await choose("item-totp-digits", "8");
+    await submitForm("Create item");
+    await act(async () => Promise.resolve());
+    expect(container?.querySelector(".totp-code output")?.textContent).toBe("00000001");
+    expect(broker.computeTotpCalls).toHaveLength(1);
+    expect(broker.computeTotpCalls[0]).toMatchObject({
+      vaultId,
+      record: { id: itemId, generation: "1", keyVersion: 1, item: { type: "totp" } },
+    });
+
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(container?.querySelector(".totp-code output")?.textContent).toBe("00000002");
+    expect(broker.computeTotpCalls).toHaveLength(2);
+    await act(async () => globalThis.dispatchEvent(new Event("focus")));
+    await act(async () => Promise.resolve());
+    expect(broker.computeTotpCalls).toHaveLength(3);
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    await act(async () => Promise.resolve());
+    expect(broker.computeTotpCalls).toHaveLength(4);
+
+    await click("Edit item");
+    expect(container?.querySelector(".totp-code output")).toBeNull();
+    await click("Lock now");
+    expect(container?.textContent).toContain("Welcome back");
+    expect(container?.textContent).not.toContain("00000002");
   });
 
   it("suppresses older generation after manual edits, newer requests, target changes, and lock", async () => {

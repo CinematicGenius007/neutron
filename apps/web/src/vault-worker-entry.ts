@@ -9,7 +9,9 @@ const scope = self as unknown as {
 const runtime = new VaultWorkerRuntime(
   {
     createProvider: createLibsodiumProvider,
+    nowMilliseconds: Date.now,
     openRepository: openIndexedDbEncryptedRecordRepository,
+    subtle: crypto.subtle,
   },
   { postMessage: (message) => scope.postMessage(message) },
 );

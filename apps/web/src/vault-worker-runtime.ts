@@ -8,6 +8,7 @@ import {
   unlockOfflineVault,
 } from "./local-vault.js";
 import { generatePassword, validateGeneratedPassword } from "./password-generator.js";
+import { computeTotp, validateTotpComputation } from "./totp.js";
 import {
   parseVaultWorkerRequest,
   parseVaultWorkerResponse,
@@ -19,7 +20,9 @@ import {
 
 export interface VaultWorkerRuntimeDependencies {
   readonly createProvider: () => Promise<CryptoProvider>;
+  readonly nowMilliseconds: () => number;
   readonly openRepository: () => Promise<EncryptedRecordRepository>;
+  readonly subtle: Pick<SubtleCrypto, "importKey" | "sign">;
 }
 
 export interface VaultWorkerRuntimePort {
@@ -164,6 +167,29 @@ export class VaultWorkerRuntime {
         return {
           kind: "item",
           item: item === undefined ? null : { ...item, generation: item.generation.toString() },
+        };
+      }
+      case "compute-totp": {
+        const item = await this.#requireSession().getItem(input.vaultId, input.itemId);
+        if (item === undefined) throw new LocalVaultFailure("item-not-found");
+        if (
+          item.generation !== BigInt(input.generation as string) ||
+          item.keyVersion !== input.keyVersion
+        )
+          throw new LocalVaultFailure("conflict");
+        if (item.item.type !== "totp") throw new LocalVaultFailure("invalid-item-reference");
+        const result = await computeTotp(
+          this.#dependencies.subtle,
+          item.item,
+          this.#dependencies.nowMilliseconds(),
+        );
+        validateTotpComputation(result, item.item);
+        return {
+          kind: "totp-code",
+          itemId: item.id,
+          generation: item.generation.toString(),
+          keyVersion: item.keyVersion,
+          ...result,
         };
       }
       case "generate-password": {

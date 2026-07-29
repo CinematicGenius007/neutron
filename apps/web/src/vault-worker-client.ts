@@ -5,6 +5,7 @@ import {
   parsePasswordGeneratorOptions,
   validateGeneratedPassword,
 } from "./password-generator.js";
+import { isTotpResultFresh, type TotpComputation } from "./totp.js";
 import vaultWorkerScript from "./vault-worker-entry.ts?worker&url";
 import {
   incrementPositiveCanonicalUint64,
@@ -50,6 +51,12 @@ export interface VaultWorkerSummaryPage {
   readonly nextCursor?: string;
 }
 
+export interface VaultWorkerTotpCode extends TotpComputation {
+  readonly generation: string;
+  readonly itemId: string;
+  readonly keyVersion: number;
+}
+
 export class VaultWorkerClientFailure extends Error {
   readonly code: string;
 
@@ -59,6 +66,8 @@ export class VaultWorkerClientFailure extends Error {
     this.code = code;
   }
 }
+
+class TotpReceiptExpiredFailure extends Error {}
 
 interface NeutronTrustedTypesPolicy {
   createScriptURL(value: string): unknown;
@@ -98,6 +107,14 @@ interface PendingRequest {
   readonly passwordGeneratorOptions?: PasswordGeneratorOptionsV1;
   readonly reject: (reason: VaultWorkerClientFailure) => void;
   readonly resolve: (value: unknown) => void;
+  readonly totpExpectation?: Readonly<{
+    algorithm: "SHA1" | "SHA256" | "SHA512";
+    digits: 6 | 8;
+    generation: string;
+    itemId: string;
+    keyVersion: number;
+    period: number;
+  }>;
 }
 
 interface ResponseExpectation {
@@ -107,6 +124,7 @@ interface ResponseExpectation {
   readonly listCursor?: string;
   readonly listLimit?: number;
   readonly passwordGeneratorOptions?: PasswordGeneratorOptionsV1;
+  readonly totpExpectation?: NonNullable<PendingRequest["totpExpectation"]>;
 }
 
 function resultRecord(value: unknown): Record<string, unknown> {
@@ -115,9 +133,27 @@ function resultRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function validateOperationResult(pending: PendingRequest, result: Record<string, unknown>): void {
+function validateOperationResult(
+  pending: PendingRequest,
+  result: Record<string, unknown>,
+  nowMilliseconds: number,
+): void {
   if (pending.passwordGeneratorOptions !== undefined)
     validateGeneratedPassword(result.password, pending.passwordGeneratorOptions);
+  if (pending.totpExpectation !== undefined) {
+    const expectation = pending.totpExpectation;
+    if (
+      result.itemId !== expectation.itemId ||
+      result.generation !== expectation.generation ||
+      result.keyVersion !== expectation.keyVersion ||
+      result.algorithm !== expectation.algorithm ||
+      result.digits !== expectation.digits ||
+      result.period !== expectation.period
+    )
+      throw new VaultWorkerProtocolFailure();
+    if (!isTotpResultFresh(result as unknown as TotpComputation, nowMilliseconds))
+      throw new TotpReceiptExpiredFailure();
+  }
   if (pending.expectedItemId !== undefined) {
     const value = result.kind === "item" ? result.item : result.revision;
     if (value !== null && resultRecord(value).id !== pending.expectedItemId)
@@ -157,16 +193,22 @@ export class VaultWorkerClient {
   readonly #worker: VaultWorkerLike;
   readonly #pending = new Map<string, PendingRequest>();
   readonly #lockTimeoutMilliseconds: number;
+  readonly #nowMilliseconds: () => number;
   #epoch = 0n;
   #nextRequestId = 1n;
   #closed = false;
   #locking = false;
 
-  constructor(worker: VaultWorkerLike, lockTimeoutMilliseconds = defaultLockTimeoutMilliseconds) {
+  constructor(
+    worker: VaultWorkerLike,
+    lockTimeoutMilliseconds = defaultLockTimeoutMilliseconds,
+    nowMilliseconds: () => number = Date.now,
+  ) {
     if (!Number.isSafeInteger(lockTimeoutMilliseconds) || lockTimeoutMilliseconds < 1)
       throw new VaultWorkerClientFailure("invalid-request");
     this.#worker = worker;
     this.#lockTimeoutMilliseconds = lockTimeoutMilliseconds;
+    this.#nowMilliseconds = nowMilliseconds;
     worker.onmessage = (event) => this.#receive(event.data);
     worker.onerror = () => this.#failClosed("worker-failure");
     worker.onmessageerror = () => this.#failClosed("invalid-worker-response");
@@ -194,6 +236,8 @@ export class VaultWorkerClient {
   #receive(candidate: unknown): void {
     if (this.#closed) return;
     let response: VaultWorkerResponse;
+    let pendingForExpiredResult: PendingRequest | undefined;
+    let expiredRequestId: string | undefined;
     try {
       response = parseVaultWorkerResponse(candidate);
       const pending = this.#pending.get(response.requestId);
@@ -218,11 +262,22 @@ export class VaultWorkerClient {
       }
       const result = resultRecord(response.result);
       if (result.kind !== pending.expectedKind) throw new VaultWorkerProtocolFailure();
-      validateOperationResult(pending, result);
+      pendingForExpiredResult = pending;
+      expiredRequestId = response.requestId;
+      validateOperationResult(pending, result, this.#nowMilliseconds());
       this.#pending.delete(response.requestId);
       this.#epoch = expectedEpoch;
       pending.resolve(result);
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof TotpReceiptExpiredFailure &&
+        pendingForExpiredResult !== undefined &&
+        expiredRequestId !== undefined
+      ) {
+        this.#pending.delete(expiredRequestId);
+        pendingForExpiredResult.reject(new VaultWorkerClientFailure("expired-result"));
+        return;
+      }
       this.#failClosed("invalid-worker-response");
     }
   }
@@ -318,6 +373,34 @@ export class VaultWorkerClient {
       }),
     );
     return result.item === null ? undefined : (result.item as VaultWorkerItemRecord);
+  }
+
+  async computeTotp(vaultId: string, record: VaultWorkerItemRecord): Promise<VaultWorkerTotpCode> {
+    if (record.item.type !== "totp") throw new VaultWorkerClientFailure("invalid-request");
+    const expectation = Object.freeze({
+      algorithm: record.item.algorithm,
+      digits: record.item.digits,
+      generation: record.generation,
+      itemId: record.id,
+      keyVersion: record.keyVersion,
+      period: record.item.period,
+    });
+    const result = resultRecord(
+      await this.#call(
+        "compute-totp",
+        {
+          vaultId,
+          itemId: record.id,
+          generation: record.generation,
+          keyVersion: record.keyVersion,
+        },
+        "totp-code",
+        false,
+        { totpExpectation: expectation },
+      ),
+    );
+    const { kind: _kind, ...code } = result;
+    return code as unknown as VaultWorkerTotpCode;
   }
 
   async generatePassword(optionsCandidate: PasswordGeneratorOptionsV1): Promise<string> {

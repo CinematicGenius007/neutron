@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
@@ -250,6 +251,20 @@ function assertNoSentinels(value, sentinels, label) {
   }
 }
 
+function referenceTotp(secret, algorithm, digits, period, validFromUnixSeconds) {
+  const counter = BigInt(validFromUnixSeconds) / BigInt(period);
+  const counterBytes = Buffer.alloc(8);
+  counterBytes.writeBigUInt64BE(counter);
+  const digest = createHmac(algorithm, Buffer.from(secret, "ascii")).update(counterBytes).digest();
+  const offset = digest.at(-1) & 0x0f;
+  const binary =
+    ((digest[offset] & 0x7f) << 24) |
+    (digest[offset + 1] << 16) |
+    (digest[offset + 2] << 8) |
+    digest[offset + 3];
+  return (binary % 10 ** digits).toString().padStart(digits, "0");
+}
+
 const build = await verifyBuild();
 const publicFiles = new Set(build.files.filter((file) => !file.startsWith(".vite/")));
 const allowedPaths = new Set([...publicFiles].map((file) => `/${file}`));
@@ -453,8 +468,41 @@ try {
   const freshWorker = page.workers()[0];
   assert(freshWorker !== undefined, "fresh unlock worker is absent");
   assert.notEqual(freshWorker, activeWorkerBeforeLock);
+
+  const totpTitle = "Production TOTP fixture";
+  const totpSeed = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
+  const totpForm = page.getByRole("form", { name: "Create item" });
+  await totpForm.getByLabel("Type").selectOption("totp");
+  await totpForm.getByLabel("Title").fill(totpTitle);
+  await totpForm.getByLabel("Base32 secret").fill(totpSeed);
+  await totpForm.getByLabel("Digits").selectOption("8");
+  await activateWithKeyboard(page, totpForm.getByRole("button", { name: "Create item" }));
+  await page.getByRole("heading", { name: totpTitle }).waitFor();
+  const totpOutput = page.locator(".totp-code output");
+  await totpOutput.waitFor();
+  const totpCode = await totpOutput.textContent();
+  const validFromUnixSeconds = await totpOutput.getAttribute("data-valid-from");
+  assert.match(totpCode, /^[0-9]{8}$/);
+  assert.match(validFromUnixSeconds, /^(0|[1-9][0-9]*)$/);
+  assert.equal(
+    totpCode,
+    referenceTotp("12345678901234567890", "sha1", 8, 30, validFromUnixSeconds),
+  );
+  sentinels.push(totpTitle, totpSeed, totpCode);
+  assertNoSentinels(await rawDatabaseDump(page), sentinels, "TOTP encrypted IndexedDB");
+  assertNoSentinels(await originPersistenceDump(page), sentinels, "TOTP origin persistence");
+  await page.setViewportSize({ width: 320, height: 640 });
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
+    true,
+  );
+  await page.setViewportSize({ width: 1280, height: 720 });
+
   await page.getByRole("button", { name: "Lock now" }).click();
   await page.getByRole("heading", { name: "Welcome back" }).waitFor();
+  assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "TOTP locked runtime");
+  assertNoSentinels(await originPersistenceDump(page), sentinels, "TOTP locked persistence");
   await waitForNoWorkers(page);
 
   assertNoSentinels(requestRecords, sentinels, "network requests");

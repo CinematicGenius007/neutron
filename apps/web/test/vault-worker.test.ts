@@ -25,6 +25,17 @@ const login: VaultItem = {
   url: "https://worker.invalid",
 };
 
+const totpItem: VaultItem = {
+  schemaVersion: 1,
+  type: "totp",
+  title: "Synthetic worker TOTP",
+  tags: [],
+  secretBase32: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+  algorithm: "SHA1",
+  digits: 8,
+  period: 30,
+};
+
 function request(operation: string, input: unknown = {}) {
   return { protocol: 1, requestId: "1", sessionEpoch: "0", operation, input };
 }
@@ -37,9 +48,18 @@ class LoopbackWorker implements VaultWorkerLike {
   terminated = false;
   readonly #runtime: VaultWorkerRuntime;
 
-  constructor(repository = new MemoryEncryptedRecordRepository()) {
+  constructor(
+    repository = new MemoryEncryptedRecordRepository(),
+    nowMilliseconds: () => number = () => 59_000,
+    subtle: Pick<SubtleCrypto, "importKey" | "sign"> = crypto.subtle,
+  ) {
     this.#runtime = new VaultWorkerRuntime(
-      { createProvider: createLibsodiumProvider, openRepository: async () => repository },
+      {
+        createProvider: createLibsodiumProvider,
+        nowMilliseconds,
+        openRepository: async () => repository,
+        subtle,
+      },
       {
         postMessage: (message) => {
           this.transcript.push(structuredClone(message));
@@ -167,6 +187,17 @@ describe("vault worker protocol", () => {
         request("get-item", { vaultId: "0".repeat(32), itemId: "2".repeat(32) }),
       ),
     ).toThrow(VaultWorkerProtocolFailure);
+    expect(() =>
+      parseVaultWorkerRequest(
+        request("compute-totp", {
+          vaultId: "1".repeat(32),
+          itemId: "2".repeat(32),
+          generation: "1",
+          keyVersion: 1,
+          seed: totpItem.secretBase32,
+        }),
+      ),
+    ).toThrow(VaultWorkerProtocolFailure);
   });
 
   it("rejects mixed, unknown, and malformed worker responses", () => {
@@ -190,6 +221,35 @@ describe("vault worker protocol", () => {
         result: { kind: "generated-password", password: "a".repeat(15) },
       }),
     ).toThrow(VaultWorkerProtocolFailure);
+    const totpResponse = {
+      protocol: 1,
+      requestId: "1",
+      sessionEpoch: "1",
+      operation: "compute-totp",
+      ok: true,
+      result: {
+        kind: "totp-code",
+        itemId: "2".repeat(32),
+        generation: "1",
+        keyVersion: 1,
+        algorithm: "SHA1",
+        digits: 8,
+        period: 30,
+        code: "94287082",
+        validFromUnixSeconds: "30",
+        expiresAtUnixSeconds: "60",
+      },
+    };
+    expect(() => parseVaultWorkerResponse(totpResponse)).not.toThrow();
+    for (const result of [
+      { ...totpResponse.result, code: "9428708" },
+      { ...totpResponse.result, validFromUnixSeconds: "31" },
+      { ...totpResponse.result, expiresAtUnixSeconds: "61" },
+      { ...totpResponse.result, seed: totpItem.secretBase32 },
+    ])
+      expect(() => parseVaultWorkerResponse({ ...totpResponse, result })).toThrow(
+        VaultWorkerProtocolFailure,
+      );
     expect(() =>
       parseVaultWorkerResponse({
         protocol: 1,
@@ -284,7 +344,9 @@ describe("vault worker boundary", () => {
             await providerGate;
             return provider;
           },
+          nowMilliseconds: () => 59_000,
           openRepository: async () => repository,
+          subtle: crypto.subtle,
         },
         { postMessage: (message) => responses.push(message) },
       );
@@ -322,7 +384,12 @@ describe("vault worker boundary", () => {
       };
       const responses: unknown[] = [];
       const runtime = new VaultWorkerRuntime(
-        { createProvider: async () => provider, openRepository: async () => repository },
+        {
+          createProvider: async () => provider,
+          nowMilliseconds: () => 59_000,
+          openRepository: async () => repository,
+          subtle: crypto.subtle,
+        },
         { postMessage: (message) => responses.push(message) },
       );
       await runtime.receive(request("begin-enrollment", { password: "synthetic" }));
@@ -364,7 +431,12 @@ describe("vault worker boundary", () => {
       };
       const responses: unknown[] = [];
       const runtime = new VaultWorkerRuntime(
-        { createProvider: async () => provider, openRepository: async () => repository },
+        {
+          createProvider: async () => provider,
+          nowMilliseconds: () => 59_000,
+          openRepository: async () => repository,
+          subtle: crypto.subtle,
+        },
         { postMessage: (message) => responses.push(message) },
       );
       const unlocking = runtime.receive(request("unlock", { password: "synthetic" }));
@@ -447,6 +519,165 @@ describe("vault worker boundary", () => {
       20,
     );
     await client.lock();
+  });
+
+  it("computes TOTP for an exact current revision and rejects missing, wrong-type, and stale references", async () => {
+    const worker = new LoopbackWorker();
+    const client = new VaultWorkerClient(worker, 2_000, () => 59_000);
+    const recoveryKit = await client.beginEnrollment("correct horse battery staple");
+    const metadata = await client.confirmEnrollment(recoveryKit);
+    const vaultId = metadata.vaults[0]?.id as string;
+    const revision = await client.createItem(vaultId, totpItem);
+    const record = { ...revision, item: totpItem };
+    await expect(client.computeTotp(vaultId, record)).resolves.toEqual({
+      itemId: revision.id,
+      generation: "1",
+      keyVersion: 1,
+      algorithm: "SHA1",
+      digits: 8,
+      period: 30,
+      code: "94287082",
+      validFromUnixSeconds: "30",
+      expiresAtUnixSeconds: "60",
+    });
+
+    await expect(
+      client.computeTotp(vaultId, { ...record, id: "f".repeat(32) }),
+    ).rejects.toMatchObject({ code: "item-not-found" });
+    await expect(client.computeTotp(vaultId, { ...record, item: login })).rejects.toMatchObject({
+      code: "invalid-request",
+    });
+    await client.updateItem(vaultId, revision.id, revision.generation, revision.keyVersion, {
+      ...totpItem,
+      title: "Updated TOTP",
+    });
+    await expect(client.computeTotp(vaultId, record)).rejects.toMatchObject({ code: "conflict" });
+    await client.lock();
+  });
+
+  it("rejects a forged compute request for a non-TOTP record inside the runtime", async () => {
+    const repository = new MemoryEncryptedRecordRepository();
+    const setupWorker = new LoopbackWorker(repository);
+    const setupClient = new VaultWorkerClient(setupWorker);
+    const recoveryKit = await setupClient.beginEnrollment("correct horse battery staple");
+    const metadata = await setupClient.confirmEnrollment(recoveryKit);
+    const vaultId = metadata.vaults[0]?.id as string;
+    const revision = await setupClient.createItem(vaultId, login);
+    await setupClient.lock();
+
+    const responses: unknown[] = [];
+    const runtime = new VaultWorkerRuntime(
+      {
+        createProvider: createLibsodiumProvider,
+        nowMilliseconds: () => 59_000,
+        openRepository: async () => repository,
+        subtle: crypto.subtle,
+      },
+      { postMessage: (message) => responses.push(message) },
+    );
+    await runtime.receive(request("unlock", { password: "correct horse battery staple" }));
+    await runtime.receive({
+      ...request("compute-totp", {
+        vaultId,
+        itemId: revision.id,
+        generation: revision.generation,
+        keyVersion: revision.keyVersion,
+      }),
+      requestId: "2",
+      sessionEpoch: "1",
+    });
+    expect(responses[1]).toMatchObject({
+      operation: "compute-totp",
+      ok: false,
+      error: "invalid-item-reference",
+    });
+  });
+
+  it("returns a stable internal failure for an invalid worker clock", async () => {
+    const worker = new LoopbackWorker(new MemoryEncryptedRecordRepository(), () => -1);
+    const client = new VaultWorkerClient(worker, 2_000, () => 59_000);
+    const recoveryKit = await client.beginEnrollment("correct horse battery staple");
+    const metadata = await client.confirmEnrollment(recoveryKit);
+    const vaultId = metadata.vaults[0]?.id as string;
+    const revision = await client.createItem(vaultId, totpItem);
+    await expect(
+      client.computeTotp(vaultId, { ...revision, item: totpItem }),
+    ).rejects.toMatchObject({
+      code: "internal",
+    });
+    await client.lock();
+  });
+
+  it("fails closed on forged TOTP policy and receipt-time freshness", async () => {
+    for (const result of [
+      {
+        algorithm: "SHA256",
+        code: "46119246",
+        validFromUnixSeconds: "30",
+        expiresAtUnixSeconds: "60",
+      },
+      {
+        algorithm: "SHA1",
+        code: "94287082",
+        validFromUnixSeconds: "0",
+        expiresAtUnixSeconds: "30",
+      },
+    ]) {
+      let terminated = false;
+      const sent: unknown[] = [];
+      const worker: VaultWorkerLike = {
+        onerror: null,
+        onmessage: null,
+        onmessageerror: null,
+        postMessage(message) {
+          sent.push(message);
+        },
+        terminate() {
+          terminated = true;
+        },
+      };
+      const client = new VaultWorkerClient(worker, 2_000, () => 59_000);
+      const record = {
+        id: "2".repeat(32),
+        generation: "1",
+        keyVersion: 1,
+        item: totpItem,
+      };
+      const computing = client.computeTotp("1".repeat(32), record);
+      const posted = sent[0] as { input: Record<string, unknown> };
+      expect(posted.input).toEqual({
+        vaultId: "1".repeat(32),
+        itemId: "2".repeat(32),
+        generation: "1",
+        keyVersion: 1,
+      });
+      expect(JSON.stringify(posted)).not.toContain(totpItem.secretBase32);
+      worker.onmessage?.(
+        new MessageEvent("message", {
+          data: {
+            protocol: 1,
+            requestId: "1",
+            sessionEpoch: "0",
+            operation: "compute-totp",
+            ok: true,
+            result: {
+              kind: "totp-code",
+              itemId: record.id,
+              generation: record.generation,
+              keyVersion: record.keyVersion,
+              digits: 8,
+              period: 30,
+              ...result,
+            },
+          },
+        }),
+      );
+      const expired = result.expiresAtUnixSeconds === "30";
+      await expect(computing).rejects.toMatchObject({
+        code: expired ? "expired-result" : "invalid-worker-response",
+      });
+      expect(terminated).toBe(!expired);
+    }
   });
 
   it("fails closed on request-specific generated-password forgeries and snapshots options", async () => {
@@ -651,7 +882,9 @@ describe("vault worker boundary", () => {
     const runtime = new VaultWorkerRuntime(
       {
         createProvider: createLibsodiumProvider,
+        nowMilliseconds: () => 59_000,
         openRepository: async () => new MemoryEncryptedRecordRepository(),
+        subtle: crypto.subtle,
       },
       { postMessage: (message) => responses.push(message) },
     );

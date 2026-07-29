@@ -16,6 +16,7 @@ export type VaultWorkerOperation =
   | "begin-enrollment"
   | "cancel-enrollment"
   | "confirm-enrollment"
+  | "compute-totp"
   | "create-item"
   | "delete-item"
   | "get-item"
@@ -179,6 +180,11 @@ function itemType(value: unknown): VaultItem["type"] {
   }
 }
 
+function totpAlgorithm(value: unknown): "SHA1" | "SHA256" | "SHA512" {
+  if (value !== "SHA1" && value !== "SHA256" && value !== "SHA512") fail();
+  return value;
+}
+
 function vaultItem(value: unknown): VaultItem {
   try {
     return parseVaultItem(value);
@@ -262,6 +268,13 @@ function parseInput(
       id(input.vaultId);
       id(input.itemId);
       break;
+    case "compute-totp":
+      input = exact(candidate, ["vaultId", "itemId", "generation", "keyVersion"]);
+      id(input.vaultId);
+      id(input.itemId);
+      parsePositiveCanonicalUint64(input.generation);
+      positiveUint32(input.keyVersion);
+      break;
     case "generate-password":
       input = generatorOptions(candidate) as Record<string, unknown>;
       break;
@@ -298,6 +311,7 @@ function operation(value: unknown): VaultWorkerOperation {
     case "begin-enrollment":
     case "cancel-enrollment":
     case "confirm-enrollment":
+    case "compute-totp":
     case "create-item":
     case "delete-item":
     case "get-item":
@@ -408,6 +422,43 @@ function parseResult(candidate: unknown): unknown {
       const result = exact(value, ["kind", "password"]);
       return Object.freeze({ kind, password: generatedPassword(result.password) });
     }
+    case "totp-code": {
+      const result = exact(value, [
+        "kind",
+        "itemId",
+        "generation",
+        "keyVersion",
+        "algorithm",
+        "digits",
+        "period",
+        "code",
+        "validFromUnixSeconds",
+        "expiresAtUnixSeconds",
+      ]);
+      const digits = result.digits;
+      if (digits !== 6 && digits !== 8) fail();
+      const period = positiveUint32(result.period, 300);
+      if (period < 15) fail();
+      if (typeof result.code !== "string" || !new RegExp(`^[0-9]{${digits}}$`).test(result.code))
+        fail();
+      const validFromUnixSeconds = parseCanonicalUint64(result.validFromUnixSeconds);
+      const expiresAtUnixSeconds = parseCanonicalUint64(result.expiresAtUnixSeconds);
+      const validFrom = BigInt(validFromUnixSeconds);
+      const expiresAt = BigInt(expiresAtUnixSeconds);
+      if (validFrom % BigInt(period) !== 0n || expiresAt !== validFrom + BigInt(period)) fail();
+      return Object.freeze({
+        kind,
+        itemId: id(result.itemId),
+        generation: parsePositiveCanonicalUint64(result.generation),
+        keyVersion: positiveUint32(result.keyVersion),
+        algorithm: totpAlgorithm(result.algorithm),
+        digits,
+        period,
+        code: result.code,
+        validFromUnixSeconds,
+        expiresAtUnixSeconds,
+      });
+    }
     case "summaries": {
       const result = exact(value, ["kind", "items", "issues"], ["nextCursor"]);
       const sourceItems = array(result.items, MAX_SUMMARY_PAGE_SIZE);
@@ -480,6 +531,8 @@ function expectedResultKind(operation: VaultWorkerOperation): string {
   switch (operation) {
     case "state":
       return "state";
+    case "compute-totp":
+      return "totp-code";
     case "begin-enrollment":
       return "enrollment";
     case "confirm-enrollment":
@@ -514,6 +567,15 @@ function operationAllowsError(
     case "state":
     case "lock":
       return false;
+    case "compute-totp":
+      return (
+        error === "conflict" ||
+        error === "corrupt-item" ||
+        error === "corrupt-state" ||
+        error === "invalid-item-reference" ||
+        error === "item-limit" ||
+        error === "item-not-found"
+      );
     case "begin-enrollment":
       return (
         error === "already-initialized" ||

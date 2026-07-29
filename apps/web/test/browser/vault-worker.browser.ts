@@ -113,6 +113,16 @@ describe("production vault module worker", () => {
         const item = generatedItems[index];
         if (item !== undefined) revisions[index] = await first.createItem(vaultId, item);
       }
+      stage = "compute TOTP";
+      const totpRevision = revisions[2];
+      expect(totpRevision).toBeDefined();
+      const totpCode = await first.computeTotp(vaultId, {
+        ...(totpRevision as { generation: string; id: string; keyVersion: number }),
+        item: generatedItems[2] as VaultItem,
+      });
+      expect(totpCode).toMatchObject({ algorithm: "SHA1", digits: 6, period: 30 });
+      expect(totpCode.code).toMatch(/^[0-9]{6}$/);
+      expect(await rawDatabaseText()).not.toContain(totpCode.code);
       stage = "list summaries";
       const summaries = await first.listItemSummaries(vaultId, 10);
       expect(summaries.items).toHaveLength(5);
@@ -151,6 +161,7 @@ describe("production vault module worker", () => {
 
       const raw = await rawDatabaseText();
       expect(raw).not.toContain(generated);
+      expect(raw).not.toContain(totpCode.code);
       expect(raw).not.toContain(password);
       expect(raw).not.toContain(kit);
       for (const sentinel of sentinels) expect(raw).not.toContain(sentinel);

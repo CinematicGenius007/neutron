@@ -5,7 +5,7 @@ Owner: unassigned
 Claimed: 2026-07-29T16:34:59Z
 Worktree/branch: shared-worktree (main)
 Reviewer: `/root/task_0022_reviewer`
-Review claimed: 2026-07-29T16:54:45Z
+Review claimed: 2026-07-29T17:03:27Z
 Depends on: 0017, 0018, 0019, 0020, 0021; accepted ADR 0013
 Blocks: remaining Stage 2 item utilities
 Security-sensitive: yes
@@ -84,11 +84,14 @@ an ADR. ADR 0013 was independently reviewed, remediated, and accepted in commit
 
 ## Verification
 
-Implementation gates passed: frozen install; typecheck; lint and format check
+Remediation gates passed: frozen install; typecheck; lint and format check
 across 106 files; 94 Node tests; root build; 23 full Chromium tests; three
 additional TOTP Web Crypto vector probes across pinned Chromium, Firefox, and
 WebKit; exact-policy emitted production Chromium flow/build verification; and
-diff check. Independent review remains pending.
+diff check. The first full Chromium attempt hit the unchanged worker test's
+intermittent IndexedDB deletion-blocked teardown race; an immediate complete
+browser rerun passed 23/23 before the matrix and production gates ran. Final
+independent review remains pending.
 
 ## Progress log
 
@@ -110,6 +113,16 @@ diff check. Independent review remains pending.
   three-engine probes, real-worker coverage, and emitted exact-CSP independent
   Node-HMAC/leakage verification. All implementation gates passed; moved to
   independent adversarial review.
+- 2026-07-29T17:02:01Z — Independent review blocked with one P1: a continuously
+  focused page could retain its displayed code after a forward or backward wall-
+  clock jump because its single expiry timer used elapsed timer delay. Returned
+  the task to active for a bounded wall-clock freshness watchdog and regression
+  coverage that moves wall time independently of the original expiry.
+- 2026-07-29T17:03:27Z — Added a one-second wall-clock freshness watchdog that
+  only requests a new worker computation after the current receipt falls outside
+  its inclusive-start/exclusive-expiry interval. Added continuously focused
+  forward- and backward-clock-jump regressions. Remediation gates passed and the
+  task returned to its independent reviewer.
 
 ## Handoff
 
@@ -118,4 +131,7 @@ Do not mark this task done without a separate reviewer. Update
 
 ## Review
 
-Pending independent adversarial review.
+First independent review blocked commit `4e0c979` with P0 0, P1 1, P2 0. All
+areas passed except active wall-clock movement: accepted ADR 0013 requires
+recomputation after forward and backward clock jumps, but the UI only scheduled
+one elapsed-delay expiry timer and revalidated on focus/visibility restoration.

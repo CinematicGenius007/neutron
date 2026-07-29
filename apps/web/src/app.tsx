@@ -86,6 +86,7 @@ function TotpCodeDisplay({
   const [codeError, setCodeError] = useState<string>();
 
   useEffect(() => {
+    const freshnessWatchdogMilliseconds = 1_000;
     let active = true;
     let expiryRetries = 0;
     let pending = false;
@@ -94,6 +95,22 @@ function TotpCodeDisplay({
     function clearTimeoutIfPresent(): void {
       if (timeout !== undefined) clearTimeout(timeout);
       timeout = undefined;
+    }
+
+    function watchFreshness(current: VaultWorkerTotpCode): void {
+      const remainingMilliseconds = Number(current.expiresAtUnixSeconds) * 1_000 - Date.now();
+      timeout = setTimeout(
+        () => {
+          if (!active) return;
+          if (!isTotpResultFresh(current, Date.now())) {
+            setCode(undefined);
+            void refresh();
+            return;
+          }
+          watchFreshness(current);
+        },
+        Math.max(0, Math.min(freshnessWatchdogMilliseconds, remainingMilliseconds)),
+      );
     }
 
     async function refresh(): Promise<void> {
@@ -117,11 +134,7 @@ function TotpCodeDisplay({
         }
         expiryRetries = 0;
         setCode(next);
-        const delay = Math.max(0, Number(next.expiresAtUnixSeconds) * 1_000 - Date.now());
-        timeout = setTimeout(() => {
-          setCode(undefined);
-          void refresh();
-        }, delay);
+        watchFreshness(next);
       } catch (cause) {
         if (!active) return;
         const code =

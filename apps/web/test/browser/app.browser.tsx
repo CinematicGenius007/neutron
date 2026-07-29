@@ -542,18 +542,29 @@ describe("React vault shell", () => {
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
     expect(container?.querySelector(".totp-code output")?.textContent).toBe("00000002");
     expect(broker.computeTotpCalls).toHaveLength(2);
+
+    vi.setSystemTime(new Date(120_000));
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(container?.querySelector(".totp-code output")?.textContent).toBe("00000004");
+    expect(broker.computeTotpCalls).toHaveLength(3);
+
+    vi.setSystemTime(new Date(30_000));
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(container?.querySelector(".totp-code output")?.textContent).toBe("00000001");
+    expect(broker.computeTotpCalls).toHaveLength(4);
+
     await act(async () => globalThis.dispatchEvent(new Event("focus")));
     await act(async () => Promise.resolve());
-    expect(broker.computeTotpCalls).toHaveLength(3);
+    expect(broker.computeTotpCalls).toHaveLength(5);
     await act(async () => document.dispatchEvent(new Event("visibilitychange")));
     await act(async () => Promise.resolve());
-    expect(broker.computeTotpCalls).toHaveLength(4);
+    expect(broker.computeTotpCalls).toHaveLength(6);
 
     await click("Edit item");
     expect(container?.querySelector(".totp-code output")).toBeNull();
     await click("Lock now");
     expect(container?.textContent).toContain("Welcome back");
-    expect(container?.textContent).not.toContain("00000002");
+    expect(container?.textContent).not.toContain("00000001");
   });
 
   it("suppresses older generation after manual edits, newer requests, target changes, and lock", async () => {

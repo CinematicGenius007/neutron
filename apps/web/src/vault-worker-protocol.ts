@@ -1,5 +1,9 @@
 import { parseVaultItem, type VaultItem } from "@neutron/vault-domain/items";
 import type { LocalVaultFailureCode, LocalVaultMetadata } from "./local-vault.js";
+import {
+  parseGlobalGeneratedPassword,
+  parsePasswordGeneratorOptions,
+} from "./password-generator.js";
 
 export const VAULT_WORKER_PROTOCOL = 1 as const;
 export const MAX_SUMMARY_PAGE_SIZE = 100;
@@ -15,6 +19,7 @@ export type VaultWorkerOperation =
   | "create-item"
   | "delete-item"
   | "get-item"
+  | "generate-password"
   | "list-item-summaries"
   | "lock"
   | "state"
@@ -210,6 +215,22 @@ function positiveUint32(value: unknown, maximum = 0xffff_ffff): number {
   return value as number;
 }
 
+function generatorOptions(value: unknown): Readonly<Record<string, unknown>> {
+  try {
+    return parsePasswordGeneratorOptions(value) as unknown as Readonly<Record<string, unknown>>;
+  } catch {
+    fail();
+  }
+}
+
+function generatedPassword(value: unknown): string {
+  try {
+    return parseGlobalGeneratedPassword(value);
+  } catch {
+    fail();
+  }
+}
+
 function parseInput(
   operation: VaultWorkerOperation,
   candidate: unknown,
@@ -240,6 +261,9 @@ function parseInput(
       input = exact(candidate, ["vaultId", "itemId"]);
       id(input.vaultId);
       id(input.itemId);
+      break;
+    case "generate-password":
+      input = generatorOptions(candidate) as Record<string, unknown>;
       break;
     case "create-item":
       input = exact(candidate, ["vaultId", "item"]);
@@ -277,6 +301,7 @@ function operation(value: unknown): VaultWorkerOperation {
     case "create-item":
     case "delete-item":
     case "get-item":
+    case "generate-password":
     case "list-item-summaries":
     case "lock":
     case "state":
@@ -379,6 +404,10 @@ function parseResult(candidate: unknown): unknown {
       const result = exact(value, ["kind", "revision"]);
       return Object.freeze({ kind, revision: parseRevision(result.revision) });
     }
+    case "generated-password": {
+      const result = exact(value, ["kind", "password"]);
+      return Object.freeze({ kind, password: generatedPassword(result.password) });
+    }
     case "summaries": {
       const result = exact(value, ["kind", "items", "issues"], ["nextCursor"]);
       const sourceItems = array(result.items, MAX_SUMMARY_PAGE_SIZE);
@@ -460,6 +489,8 @@ function expectedResultKind(operation: VaultWorkerOperation): string {
       return "summaries";
     case "get-item":
       return "item";
+    case "generate-password":
+      return "generated-password";
     case "create-item":
     case "update-item":
       return "revision";
@@ -515,6 +546,8 @@ function operationAllowsError(
         error === "corrupt-item" ||
         error === "corrupt-state"
       );
+    case "generate-password":
+      return false;
     case "create-item":
       return (
         error === "invalid-item-reference" ||

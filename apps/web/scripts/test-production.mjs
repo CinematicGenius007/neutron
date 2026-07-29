@@ -326,10 +326,17 @@ try {
   await createForm.getByLabel("Title").fill(originalTitle);
   await createForm.getByLabel("Tags, one per line").fill(tag);
   await createForm.getByLabel("Username").fill(username);
-  await createForm.getByLabel("Password").fill(itemSecret);
+  await activateWithKeyboard(page, createForm.getByRole("button", { name: "Generate password" }));
+  await page.waitForFunction(() => document.querySelector("#item-password")?.value.length === 20);
+  const generatedPassword = await createForm.getByLabel("Password").inputValue();
+  assert.equal(generatedPassword.length, 20);
+  assert.match(generatedPassword, /^[A-Za-z0-9!@#$%^&*()\-_=+[\]{};:,.?]+$/);
+  sentinels.push(generatedPassword);
+  assertNoSentinels(await rawDatabaseDump(page), sentinels, "pre-save IndexedDB");
   await activateWithKeyboard(page, createForm.getByRole("button", { name: "Create item" }));
   await page.getByRole("heading", { name: originalTitle }).waitFor();
   await page.getByText(/Revision 1 · key version 1/).waitFor();
+  assertNoSentinels(await rawDatabaseDump(page), sentinels, "post-save encrypted IndexedDB");
 
   await activateWithKeyboard(page, page.getByRole("button", { name: "Edit item" }));
   const staleUpdateForm = page.getByRole("form", { name: "Edit item" });
@@ -387,6 +394,20 @@ try {
   await page.getByRole("heading", { name: "Choose an item to decrypt it" }).waitFor();
   assertNoSentinels(await rawDatabaseDump(page), sentinels, "deleted IndexedDB");
   assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "post-delete runtime");
+
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
+  const cancelledForm = page.getByRole("form", { name: "Create item" });
+  await activateWithKeyboard(
+    page,
+    cancelledForm.getByRole("button", { name: "Generate password" }),
+  );
+  await page.waitForFunction(() => document.querySelector("#item-password")?.value.length === 20);
+  const cancelledGeneratedPassword = await cancelledForm.getByLabel("Password").inputValue();
+  assert.equal(cancelledGeneratedPassword.length, 20);
+  sentinels.push(cancelledGeneratedPassword);
+  await activateWithKeyboard(page, cancelledForm.getByRole("button", { name: "Cancel editing" }));
+  assertNoSentinels(await rawDatabaseDump(page), sentinels, "cancelled-generation IndexedDB");
+  assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "cancelled-generation runtime");
 
   const activeWorkerBeforeLock = page.workers()[0];
   assert(activeWorkerBeforeLock !== undefined, "unlocked vault worker is absent");

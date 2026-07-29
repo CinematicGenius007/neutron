@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { type BrowserSupport, detectBrowserSupport } from "./browser-support.js";
 import { ItemEditor } from "./item-editor.js";
 import type { LocalVaultMetadata } from "./local-vault.js";
+import type { PasswordGeneratorOptionsV1 } from "./password-generator.js";
 import {
   createVaultWorkerClient,
   type VaultWorkerClient,
@@ -28,6 +29,10 @@ export interface VaultBroker
     | "unlock"
     | "updateItem"
   > {}
+
+export interface VaultBroker {
+  readonly generatePassword?: (options: PasswordGeneratorOptionsV1) => Promise<string>;
+}
 
 export interface VaultAppProps {
   readonly createBroker?: () => VaultBroker;
@@ -356,6 +361,13 @@ export function VaultApp({
     );
   }
 
+  async function generateEditorPassword(options: PasswordGeneratorOptionsV1): Promise<string> {
+    const active = currentBroker();
+    const generate = active.generatePassword;
+    if (generate === undefined) throw new Error("generator unavailable");
+    return generate.call(active, options);
+  }
+
   function deleteEditorItem(): void {
     const target = editor;
     const session = metadata;
@@ -643,6 +655,7 @@ export function VaultApp({
                     setEditor(undefined);
                     setError(undefined);
                   }}
+                  onGeneratePassword={generateEditorPassword}
                   {...(editor.kind === "edit" ? { onDelete: deleteEditorItem } : {})}
                   onSave={saveEditorItem}
                 />

@@ -2,6 +2,7 @@ import { createLibsodiumProvider } from "@neutron/crypto";
 import { MemoryEncryptedRecordRepository, type VaultItem } from "@neutron/vault-domain";
 import { describe, expect, it } from "vitest";
 import { beginOfflineEnrollment } from "../src/local-vault.js";
+import { DEFAULT_PASSWORD_GENERATOR_OPTIONS } from "../src/password-generator.js";
 import {
   VaultWorkerClient,
   type VaultWorkerClientFailure,
@@ -169,6 +170,26 @@ describe("vault worker protocol", () => {
   });
 
   it("rejects mixed, unknown, and malformed worker responses", () => {
+    expect(() =>
+      parseVaultWorkerRequest(
+        request("generate-password", { ...DEFAULT_PASSWORD_GENERATOR_OPTIONS, length: 15 }),
+      ),
+    ).toThrow(VaultWorkerProtocolFailure);
+    expect(() =>
+      parseVaultWorkerRequest(
+        request("generate-password", { ...DEFAULT_PASSWORD_GENERATOR_OPTIONS, extra: true }),
+      ),
+    ).toThrow(VaultWorkerProtocolFailure);
+    expect(() =>
+      parseVaultWorkerResponse({
+        protocol: 1,
+        requestId: "1",
+        sessionEpoch: "0",
+        operation: "generate-password",
+        ok: true,
+        result: { kind: "generated-password", password: "a".repeat(15) },
+      }),
+    ).toThrow(VaultWorkerProtocolFailure);
     expect(() =>
       parseVaultWorkerResponse({
         protocol: 1,
@@ -371,6 +392,9 @@ describe("vault worker boundary", () => {
     const recoveryKit = await client.beginEnrollment("correct horse battery staple");
     expect(await client.state()).toBe("pending-enrollment");
     const metadata = await client.confirmEnrollment(recoveryKit);
+    const generated = await client.generatePassword(DEFAULT_PASSWORD_GENERATOR_OPTIONS);
+    expect(generated).toHaveLength(20);
+    expect(generated).toMatch(/^[A-Za-z0-9!@#$%^&*()\-_=+[\]{};:,.?]+$/);
     const vaultId = metadata.vaults[0]?.id as string;
     const created = await client.createItem(vaultId, login);
     expect(created).toMatchObject({ generation: "1", keyVersion: 1 });
@@ -402,6 +426,70 @@ describe("vault worker boundary", () => {
 
     const transcript = JSON.stringify(worker.transcript);
     expect(transcript).not.toMatch(/vaultKey|itemKey|envelope/i);
+  });
+
+  it("allows generation only in an unlocked runtime state", async () => {
+    const worker = new LoopbackWorker();
+    const client = new VaultWorkerClient(worker);
+    await expect(client.generatePassword(DEFAULT_PASSWORD_GENERATOR_OPTIONS)).rejects.toMatchObject(
+      {
+        code: "locked",
+      },
+    );
+    const recoveryKit = await client.beginEnrollment("correct horse battery staple");
+    await expect(client.generatePassword(DEFAULT_PASSWORD_GENERATOR_OPTIONS)).rejects.toMatchObject(
+      {
+        code: "locked",
+      },
+    );
+    await client.confirmEnrollment(recoveryKit);
+    await expect(client.generatePassword(DEFAULT_PASSWORD_GENERATOR_OPTIONS)).resolves.toHaveLength(
+      20,
+    );
+    await client.lock();
+  });
+
+  it("fails closed on request-specific generated-password forgeries and snapshots options", async () => {
+    const sent: unknown[] = [];
+    let terminated = false;
+    const worker: VaultWorkerLike = {
+      onerror: null,
+      onmessage: null,
+      onmessageerror: null,
+      postMessage(message) {
+        sent.push(message);
+      },
+      terminate() {
+        terminated = true;
+      },
+    };
+    const client = new VaultWorkerClient(worker);
+    const options = {
+      length: 25,
+      lowercase: false,
+      uppercase: false,
+      digits: true,
+      symbols: false,
+    };
+    const generating = client.generatePassword(options);
+    options.digits = false;
+    options.lowercase = true;
+    const posted = sent[0] as { input: { digits: boolean; lowercase: boolean } };
+    expect(posted.input).toMatchObject({ digits: true, lowercase: false });
+    worker.onmessage?.(
+      new MessageEvent("message", {
+        data: {
+          protocol: 1,
+          requestId: "1",
+          sessionEpoch: "0",
+          operation: "generate-password",
+          ok: true,
+          result: { kind: "generated-password", password: "a".repeat(25) },
+        },
+      }),
+    );
+    await expect(generating).rejects.toMatchObject({ code: "invalid-worker-response" });
+    expect(terminated).toBe(true);
   });
 
   it("fails closed on a forged response and rejects every outstanding request", async () => {

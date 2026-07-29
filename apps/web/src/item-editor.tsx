@@ -1,6 +1,10 @@
 import { parseVaultItem, type VaultItem } from "@neutron/vault-domain/items";
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
+import {
+  DEFAULT_PASSWORD_GENERATOR_OPTIONS,
+  type PasswordGeneratorOptionsV1,
+} from "./password-generator.js";
 
 type ItemType = VaultItem["type"];
 
@@ -32,6 +36,7 @@ export interface ItemEditorProps {
   readonly initial?: VaultItem;
   readonly onCancel: () => void;
   readonly onDelete?: () => void;
+  readonly onGeneratePassword: (options: PasswordGeneratorOptionsV1) => Promise<string>;
   readonly onSave: (item: VaultItem) => void;
 }
 
@@ -128,19 +133,66 @@ function focusEditorElement(node: HTMLElement | null): void {
   node?.focus();
 }
 
-export function ItemEditor({ busy, initial, onCancel, onDelete, onSave }: ItemEditorProps) {
+export function ItemEditor({
+  busy,
+  initial,
+  onCancel,
+  onDelete,
+  onGeneratePassword,
+  onSave,
+}: ItemEditorProps) {
   const [draft, setDraft] = useState<ItemDraft>(() => initialDraft(initial));
   const [validationError, setValidationError] = useState<string>();
+  const [generationError, setGenerationError] = useState<string>();
+  const [generatorOptions, setGeneratorOptions] = useState<PasswordGeneratorOptionsV1>(
+    DEFAULT_PASSWORD_GENERATOR_OPTIONS,
+  );
+  const [generating, setGenerating] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const focusDeleteStart = useRef(false);
+  const generationEpoch = useRef(0);
   const editing = initial !== undefined;
 
+  function invalidateGeneration(): void {
+    generationEpoch.current += 1;
+    setGenerating(false);
+    setGenerationError(undefined);
+  }
+
   function field<Key extends keyof ItemDraft>(key: Key, value: ItemDraft[Key]): void {
+    if (key === "password") invalidateGeneration();
     setDraft((current) => ({ ...current, [key]: value }));
     setValidationError(undefined);
   }
 
+  function generatorOption<Key extends keyof PasswordGeneratorOptionsV1>(
+    key: Key,
+    value: PasswordGeneratorOptionsV1[Key],
+  ): void {
+    invalidateGeneration();
+    setGeneratorOptions((current) => ({ ...current, [key]: value }));
+  }
+
+  async function requestGeneratedPassword(): Promise<void> {
+    if (busy) return;
+    const epoch = generationEpoch.current + 1;
+    generationEpoch.current = epoch;
+    setGenerating(true);
+    setGenerationError(undefined);
+    try {
+      const password = await onGeneratePassword(generatorOptions);
+      if (generationEpoch.current !== epoch) return;
+      setDraft((current) => (current.type === "login" ? { ...current, password } : current));
+    } catch {
+      if (generationEpoch.current === epoch)
+        setGenerationError("Password could not be generated. Check the generator options.");
+    } finally {
+      if (generationEpoch.current === epoch) setGenerating(false);
+    }
+  }
+
   function changeType(type: ItemType): void {
+    invalidateGeneration();
     setDraft((current) => ({
       ...initialDraft(),
       tags: current.tags,
@@ -225,6 +277,53 @@ export function ItemEditor({ busy, initial, onCancel, onDelete, onSave }: ItemEd
               autoComplete="new-password"
               onChange={(event) => field("password", event.currentTarget.value)}
             />
+            <fieldset className="password-generator" aria-busy={generating}>
+              <legend>Generate a random password</legend>
+              <label htmlFor="password-generator-length">Length</label>
+              <input
+                id="password-generator-length"
+                type="number"
+                min={16}
+                max={128}
+                step={1}
+                value={generatorOptions.length}
+                onChange={(event) => generatorOption("length", Number(event.currentTarget.value))}
+              />
+              {(
+                [
+                  ["lowercase", "Lowercase letters"],
+                  ["uppercase", "Uppercase letters"],
+                  ["digits", "Digits"],
+                  ["symbols", "Symbols"],
+                ] as const
+              ).map(([key, label]) => (
+                <label className="check-label" htmlFor={`password-generator-${key}`} key={key}>
+                  <input
+                    id={`password-generator-${key}`}
+                    type="checkbox"
+                    checked={generatorOptions[key]}
+                    onChange={(event) => generatorOption(key, event.currentTarget.checked)}
+                  />
+                  {label}
+                </label>
+              ))}
+              {generationError === undefined ? null : (
+                <p className="error" role="alert">
+                  {generationError}
+                </p>
+              )}
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy}
+                onClick={() => void requestGeneratedPassword()}
+              >
+                {generating ? "Generate another password" : "Generate password"}
+              </button>
+              <p className="field-hint">
+                Character classes are allowed sets; each selected class may not appear every time.
+              </p>
+            </fieldset>
             <label className="check-label" htmlFor="item-has-url">
               <input
                 id="item-has-url"
@@ -414,10 +513,18 @@ export function ItemEditor({ busy, initial, onCancel, onDelete, onSave }: ItemEd
         ) : null}
 
         <div className="editor-actions">
-          <button type="submit" disabled={busy}>
+          <button type="submit" disabled={busy || generating}>
             {busy ? "Saving…" : editing ? "Save changes" : "Create item"}
           </button>
-          <button type="button" className="secondary" disabled={busy} onClick={onCancel}>
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={() => {
+              invalidateGeneration();
+              onCancel();
+            }}
+          >
             Cancel editing
           </button>
         </div>

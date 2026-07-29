@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { VaultApp, type VaultBroker } from "../../src/app.js";
+import type { PasswordGeneratorOptionsV1 } from "../../src/password-generator.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -10,6 +11,7 @@ const kit = `ntrk1${"q".repeat(85)}`;
 const vaultId = "1".repeat(32);
 const itemId = "2".repeat(32);
 const secret = "synthetic-rendered-secret";
+const generatedSecret = "A0!a".repeat(5);
 const supported = Object.freeze({ missing: Object.freeze([]), supported: true });
 
 class FakeBroker implements VaultBroker {
@@ -22,6 +24,7 @@ class FakeBroker implements VaultBroker {
     keyVersion: number;
     vaultId: string;
   }> = [];
+  readonly generateCalls: PasswordGeneratorOptionsV1[] = [];
   readonly updateCalls: Array<{
     generation: string;
     item: VaultItem;
@@ -113,6 +116,13 @@ class FakeBroker implements VaultBroker {
         password: secret,
       },
     };
+  }
+
+  async generatePassword(options: PasswordGeneratorOptionsV1) {
+    this.generateCalls.push(structuredClone(options));
+    return options.digits && !options.lowercase && !options.uppercase && !options.symbols
+      ? "0".repeat(options.length)
+      : generatedSecret;
   }
 
   async lock() {
@@ -379,6 +389,90 @@ describe("React vault shell", () => {
       value: { nested: { value: "created-json-secret" } },
     });
     expect(broker.createCalls).toHaveLength(5);
+  });
+
+  it("generates only into the current login draft without saving automatically", async () => {
+    const broker = new FakeBroker();
+    await render(broker);
+    await enter("unlock-password", "synthetic master password");
+    await click("Unlock vault");
+    await click("Create item");
+    expect(value("password-generator-length")).toBe("20");
+    for (const key of ["lowercase", "uppercase", "digits", "symbols"])
+      expect(
+        container?.querySelector<HTMLInputElement>(`#password-generator-${key}`)?.checked,
+      ).toBe(true);
+    await click("Generate password");
+    expect(broker.generateCalls).toEqual([
+      { length: 20, lowercase: true, uppercase: true, digits: true, symbols: true },
+    ]);
+    expect(value("item-password")).toBe(generatedSecret);
+    expect(broker.createCalls).toHaveLength(0);
+
+    await toggle("password-generator-lowercase");
+    await toggle("password-generator-uppercase");
+    await toggle("password-generator-symbols");
+    await enter("password-generator-length", "25");
+    await click("Generate password");
+    expect(broker.generateCalls.at(-1)).toEqual({
+      length: 25,
+      lowercase: false,
+      uppercase: false,
+      digits: true,
+      symbols: false,
+    });
+  });
+
+  it("suppresses older generation after manual edits, newer requests, target changes, and lock", async () => {
+    const pending: Array<(password: string) => void> = [];
+    class DelayedGeneratorBroker extends FakeBroker {
+      override async generatePassword(options: PasswordGeneratorOptionsV1) {
+        this.generateCalls.push(structuredClone(options));
+        return new Promise<string>((resolve) => pending.push(resolve));
+      }
+    }
+    const broker = new DelayedGeneratorBroker();
+    await render(broker);
+    await enter("unlock-password", "synthetic master password");
+    await click("Unlock vault");
+    await click("Create item");
+
+    act(() => byText("Generate password").click());
+    await act(async () => Promise.resolve());
+    await enter("item-password", "manual-password");
+    await act(async () => pending[0]?.(generatedSecret));
+    expect(value("item-password")).toBe("manual-password");
+
+    act(() => byText("Generate password").click());
+    await act(async () => Promise.resolve());
+    act(() => byText("Generate another password").click());
+    await act(async () => Promise.resolve());
+    const newer = "B1?b".repeat(5);
+    await act(async () => pending[2]?.(newer));
+    expect(value("item-password")).toBe(newer);
+    await act(async () => pending[1]?.(generatedSecret));
+    expect(value("item-password")).toBe(newer);
+
+    act(() => byText("Generate password").click());
+    await act(async () => Promise.resolve());
+    await choose("item-type", "secure-note");
+    await act(async () => pending[3]?.(generatedSecret));
+    expect(container?.querySelector("#item-password")).toBeNull();
+    await choose("item-type", "login");
+
+    act(() => byText("Generate password").click());
+    await act(async () => Promise.resolve());
+    await click("Cancel editing");
+    await act(async () => pending[4]?.(generatedSecret));
+    expect(container?.textContent).not.toContain(generatedSecret);
+
+    await click("Create item");
+    act(() => byText("Generate password").click());
+    await act(async () => Promise.resolve());
+    await click("Lock now");
+    await act(async () => pending[5]?.(generatedSecret));
+    expect(container?.textContent).toContain("Welcome back");
+    expect(container?.textContent).not.toContain(generatedSecret);
   });
 
   it("rejects malformed and over-byte drafts before broker dispatch without echoing them", async () => {

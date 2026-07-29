@@ -257,6 +257,15 @@ h1 {
 .item-editor .error {
   width: 100%;
 }
+.password-generator {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+  padding: 1rem;
+}
+.password-generator .field-hint {
+  margin: 0;
+}
 .check-label {
   display: flex;
   align-items: center;

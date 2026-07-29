@@ -1,5 +1,10 @@
 import type { VaultItem } from "@neutron/vault-domain";
 import type { LocalVaultMetadata } from "./local-vault.js";
+import {
+  type PasswordGeneratorOptionsV1,
+  parsePasswordGeneratorOptions,
+  validateGeneratedPassword,
+} from "./password-generator.js";
 import vaultWorkerScript from "./vault-worker-entry.ts?worker&url";
 import {
   incrementPositiveCanonicalUint64,
@@ -90,6 +95,7 @@ interface PendingRequest {
   readonly listCursor?: string;
   readonly listLimit?: number;
   readonly operation: VaultWorkerOperation;
+  readonly passwordGeneratorOptions?: PasswordGeneratorOptionsV1;
   readonly reject: (reason: VaultWorkerClientFailure) => void;
   readonly resolve: (value: unknown) => void;
 }
@@ -100,6 +106,7 @@ interface ResponseExpectation {
   readonly expectedKeyVersion?: number;
   readonly listCursor?: string;
   readonly listLimit?: number;
+  readonly passwordGeneratorOptions?: PasswordGeneratorOptionsV1;
 }
 
 function resultRecord(value: unknown): Record<string, unknown> {
@@ -109,6 +116,8 @@ function resultRecord(value: unknown): Record<string, unknown> {
 }
 
 function validateOperationResult(pending: PendingRequest, result: Record<string, unknown>): void {
+  if (pending.passwordGeneratorOptions !== undefined)
+    validateGeneratedPassword(result.password, pending.passwordGeneratorOptions);
   if (pending.expectedItemId !== undefined) {
     const value = result.kind === "item" ? result.item : result.revision;
     if (value !== null && resultRecord(value).id !== pending.expectedItemId)
@@ -309,6 +318,21 @@ export class VaultWorkerClient {
       }),
     );
     return result.item === null ? undefined : (result.item as VaultWorkerItemRecord);
+  }
+
+  async generatePassword(optionsCandidate: PasswordGeneratorOptionsV1): Promise<string> {
+    let options: PasswordGeneratorOptionsV1;
+    try {
+      options = parsePasswordGeneratorOptions(optionsCandidate);
+    } catch {
+      throw new VaultWorkerClientFailure("invalid-request");
+    }
+    const result = resultRecord(
+      await this.#call("generate-password", { ...options }, "generated-password", false, {
+        passwordGeneratorOptions: options,
+      }),
+    );
+    return result.password as string;
   }
 
   async createItem(vaultId: string, item: VaultItem): Promise<VaultWorkerRevision> {

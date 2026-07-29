@@ -1,5 +1,6 @@
 import type { VaultItem } from "@neutron/vault-domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DEFAULT_PASSWORD_GENERATOR_OPTIONS } from "../../src/password-generator.js";
 import { createVaultWorkerClient, type VaultWorkerClient } from "../../src/vault-worker-client.js";
 
 const databaseName = "neutron-vault-v1";
@@ -97,11 +98,19 @@ describe("production vault module worker", () => {
       stage = "confirm enrollment";
       const metadata = await first.confirmEnrollment(kit);
       const vaultId = metadata.vaults[0]?.id as string;
+      stage = "generate password";
+      const generated = await first.generatePassword(DEFAULT_PASSWORD_GENERATOR_OPTIONS);
+      expect(generated).toHaveLength(20);
+      expect(await rawDatabaseText()).not.toContain(generated);
+      const generatedItems = [
+        { ...(items[0] as VaultItem & { type: "login" }), password: generated },
+        ...items.slice(1),
+      ] as const;
       const revisions = [];
       stage = "create items";
-      for (let index = 0; index < items.length; index += 1) {
+      for (let index = 0; index < generatedItems.length; index += 1) {
         stage = `create item ${index}`;
-        const item = items[index];
+        const item = generatedItems[index];
         if (item !== undefined) revisions[index] = await first.createItem(vaultId, item);
       }
       stage = "list summaries";
@@ -111,7 +120,9 @@ describe("production vault module worker", () => {
       const firstRevision = revisions[0];
       expect(firstRevision).toBeDefined();
       stage = "point read";
-      expect((await first.getItem(vaultId, firstRevision?.id as string))?.item).toEqual(items[0]);
+      expect((await first.getItem(vaultId, firstRevision?.id as string))?.item).toEqual(
+        generatedItems[0],
+      );
       stage = "first lock";
       await first.lock();
       expect(first.isClosed).toBe(true);
@@ -139,6 +150,7 @@ describe("production vault module worker", () => {
       await expect(second.getItem(vaultId, updated.id)).rejects.toMatchObject({ code: "closed" });
 
       const raw = await rawDatabaseText();
+      expect(raw).not.toContain(generated);
       expect(raw).not.toContain(password);
       expect(raw).not.toContain(kit);
       for (const sentinel of sentinels) expect(raw).not.toContain(sentinel);

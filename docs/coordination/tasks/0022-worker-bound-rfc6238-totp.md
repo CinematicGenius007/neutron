@@ -1,6 +1,6 @@
 # TASK 0022 — Worker-bound RFC 6238 TOTP display
 
-Status: review
+Status: done
 Owner: unassigned
 Claimed: 2026-07-29T16:34:59Z
 Worktree/branch: shared-worktree (main)
@@ -80,7 +80,7 @@ an ADR. ADR 0013 was independently reviewed, remediated, and accepted in commit
       independently verifies with Node HMAC, and proves seed/code absence from
       network, URL, logs, static artifacts and origin persistence, plus active
       DOM/runtime clearing and fresh-worker behavior after lock.
-- [ ] All repository gates and independent adversarial security review pass.
+- [x] All repository gates and independent adversarial security review pass.
 
 ## Verification
 
@@ -91,7 +91,7 @@ WebKit; exact-policy emitted production Chromium flow/build verification; and
 diff check. The first full Chromium attempt hit the unchanged worker test's
 intermittent IndexedDB deletion-blocked teardown race; an immediate complete
 browser rerun passed 23/23 before the matrix and production gates ran. Final
-independent review remains pending.
+independent re-review passed with P0 0, P1 0, P2 0.
 
 ## Progress log
 
@@ -123,6 +123,10 @@ independent review remains pending.
   its inclusive-start/exclusive-expiry interval. Added continuously focused
   forward- and backward-clock-jump regressions. Remediation gates passed and the
   task returned to its independent reviewer.
+- 2026-07-29T17:05:29Z — Independent remediation re-review passed with P0 0,
+  P1 0, P2 0. The reviewer reproduced 94 Node tests, 23 Chromium tests, all
+  three engine probes, production exact-CSP flow, static gates, exact HEAD, and
+  a clean worktree. Task closed.
 
 ## Handoff
 
@@ -135,3 +139,5 @@ First independent review blocked commit `4e0c979` with P0 0, P1 1, P2 0. All
 areas passed except active wall-clock movement: accepted ADR 0013 requires
 recomputation after forward and backward clock jumps, but the UI only scheduled
 one elapsed-delay expiry timer and revalidated on focus/visibility restoration.
+Final independent re-review of remediation commit `0f56f62`: PASS by
+`/root/task_0022_reviewer`, P0 0, P1 0, P2 0. The reviewer edited no files.

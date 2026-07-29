@@ -14,6 +14,7 @@ Accepted ADRs are binding until superseded by a newer accepted ADR.
 | [0010](0010-crypto-envelope-format.md) | Accepted | Canonical v1 encrypted envelope and key hierarchy |
 | [0011](0011-offline-recovery-kit-format.md) | Accepted | Canonical offline recovery-kit format and confirmation |
 | [0012](0012-password-generation-policy.md) | Accepted | CSPRNG-backed uniform password generation policy |
+| [0013](0013-rfc6238-totp-computation.md) | Accepted | Worker-bound RFC 6238 TOTP computation policy |
 
 Use [ADR_TEMPLATE.md](ADR_TEMPLATE.md) for a new decision. Do not edit the
 rationale of an accepted ADR to make a later choice appear inevitable; supersede

@@ -1,6 +1,6 @@
 # TASK 0021 — CSPRNG-backed password generator
 
-Status: review
+Status: done
 Owner: unassigned
 Claimed: 2026-07-29T02:06:58Z
 Worktree/branch: shared-worktree (main)
@@ -76,7 +76,7 @@ ADR 0012 was independently reviewed, remediated, and accepted at commit
       encrypted persistence after Save, no network/log/static leakage, and
       clearing from active DOM/origin-visible application storage on cancel,
       delete, and lock with a fresh worker after unlock.
-- [ ] All repository gates and an independent adversarial security review pass.
+- [x] All repository gates and an independent adversarial security review pass.
 
 ## Verification
 
@@ -86,7 +86,7 @@ emitted production Chromium flow and build-output verification; and diff check.
 The remediation rerun passed all gates. Its first combined Chromium attempt hit
 `IndexedDB deletion blocked` during test cleanup before the test body; an
 immediate isolated rerun passed all 20 tests, followed by another passing
-emitted-production flow. Independent re-review remains pending.
+emitted-production flow. Independent re-review passed with P0 0, P1 0, P2 0.
 
 ## Progress log
 
@@ -112,6 +112,9 @@ emitted-production flow. Independent re-review remains pending.
   value active before proving DOM/storage clearing, worker termination, and a
   fresh worker after unlock. Returned to independent re-review after all gates
   passed, with one recorded transient cleanup-only Chromium retry.
+- 2026-07-29T02:26:58Z — Independent re-review passed with P0 0, P1 0, P2 0.
+  The reviewer reran all 20 Chromium tests, the emitted exact-CSP production
+  flow/build verification, and diff check; HEAD and status remained clean.
 
 ## Handoff
 
@@ -120,4 +123,8 @@ Do not mark this task done without a separate reviewer. Update
 
 ## Review
 
-Pending independent adversarial review.
+Initial independent review: BLOCK by `/root/task_0021_reviewer`, P0 0, P1 1,
+P2 0. The sole finding was an emitted-production coverage overclaim, not a
+product-code defect. Final independent re-review of remediation commit
+`d483224`: PASS by the same reviewer, P0 0, P1 0, P2 0. The reviewer edited no
+files.

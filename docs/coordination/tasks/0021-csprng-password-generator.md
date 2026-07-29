@@ -5,7 +5,7 @@ Owner: unassigned
 Claimed: 2026-07-29T02:06:58Z
 Worktree/branch: shared-worktree (main)
 Reviewer: `/root/task_0021_reviewer`
-Review claimed: 2026-07-29T02:17:07Z
+Review claimed: 2026-07-29T02:25:58Z
 Depends on: 0007, 0011, 0018, 0020
 Blocks: remaining Stage 2 passphrase and item-utility work
 Security-sensitive: yes
@@ -83,7 +83,10 @@ ADR 0012 was independently reviewed, remediated, and accepted at commit
 Implementation gates passed: frozen install; typecheck; lint and format check
 across 102 files; 83 Node tests; root build; 20 real-Chromium tests; exact-policy
 emitted production Chromium flow and build-output verification; and diff check.
-Independent review remains pending.
+The remediation rerun passed all gates. Its first combined Chromium attempt hit
+`IndexedDB deletion blocked` during test cleanup before the test body; an
+immediate isolated rerun passed all 20 tests, followed by another passing
+emitted-production flow. Independent re-review remains pending.
 
 ## Progress log
 
@@ -96,6 +99,19 @@ Independent review remains pending.
   and provider-fault tests, real-worker Chromium coverage, and emitted exact-CSP
   persistence/runtime/network leakage flow. All implementation gates passed;
   moved to independent adversarial review.
+- 2026-07-29T02:24:15Z — Independent review BLOCKED with P0 0, P1 1,
+  P2 0. Product logic passed inspection, but the emitted-production flow
+  overclaimed direct generated-value coverage: pre-save checked only IndexedDB,
+  the password was replaced before deletion, and generation was cancelled
+  before lock. Returned to implementation for exact origin-persistence,
+  generated-delete, and active-generated-lock regressions.
+- 2026-07-29T02:25:58Z — Added a non-DOM origin-persistence snapshot covering
+  IndexedDB, Cache Storage entries, localStorage, sessionStorage, and history
+  state immediately after generation; retained the generated value through
+  encrypted Save and direct deletion; and locked with a separately generated
+  value active before proving DOM/storage clearing, worker termination, and a
+  fresh worker after unlock. Returned to independent re-review after all gates
+  passed, with one recorded transient cleanup-only Chromium retry.
 
 ## Handoff
 

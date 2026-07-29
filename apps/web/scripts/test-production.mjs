@@ -212,6 +212,33 @@ async function runtimeSurfaceDump(page) {
   );
 }
 
+async function originPersistenceDump(page) {
+  const indexedDatabase = await rawDatabaseDump(page);
+  const originStorage = await page.evaluate(async () => {
+    const cacheEntries = [];
+    for (const cacheName of await caches.keys()) {
+      const cache = await caches.open(cacheName);
+      for (const request of await cache.keys()) {
+        const response = await cache.match(request);
+        cacheEntries.push({
+          cacheName,
+          requestHeaders: [...request.headers],
+          requestUrl: request.url,
+          responseHeaders: response === undefined ? [] : [...response.headers],
+          responseText: response === undefined ? "" : await response.clone().text(),
+        });
+      }
+    }
+    return {
+      cacheEntries,
+      historyState: history.state,
+      localStorage: Object.entries(localStorage),
+      sessionStorage: Object.entries(sessionStorage),
+    };
+  });
+  return JSON.stringify({ indexedDatabase, originStorage });
+}
+
 function assertNoSentinels(value, sentinels, label) {
   const text = typeof value === "string" ? value : JSON.stringify(value);
   for (const sentinel of sentinels) {
@@ -294,25 +321,21 @@ try {
 
   const originalTitle = "Production CRUD fixture";
   const username = "production-crud-username";
-  const itemSecret = "production-crud-secret";
   const tag = "production-crud-tag";
   const unsavedDraft = "Production unsaved draft";
   const externalWinnerOne = "Production external winner one";
   const externalWinnerTwo = "Production external winner two";
   const savedTitle = "Production saved title";
-  const updatedSecret = "production-updated-secret";
   const sentinels = [
     password,
     recoveryKit,
     originalTitle,
     username,
-    itemSecret,
     tag,
     unsavedDraft,
     externalWinnerOne,
     externalWinnerTwo,
     savedTitle,
-    updatedSecret,
   ];
 
   await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
@@ -332,7 +355,7 @@ try {
   assert.equal(generatedPassword.length, 20);
   assert.match(generatedPassword, /^[A-Za-z0-9!@#$%^&*()\-_=+[\]{};:,.?]+$/);
   sentinels.push(generatedPassword);
-  assertNoSentinels(await rawDatabaseDump(page), sentinels, "pre-save IndexedDB");
+  assertNoSentinels(await originPersistenceDump(page), sentinels, "pre-save origin persistence");
   await activateWithKeyboard(page, createForm.getByRole("button", { name: "Create item" }));
   await page.getByRole("heading", { name: originalTitle }).waitFor();
   await page.getByText(/Revision 1 · key version 1/).waitFor();
@@ -378,7 +401,6 @@ try {
   await activateWithKeyboard(page, page.getByRole("button", { name: "Edit item" }));
   const successfulEdit = page.getByRole("form", { name: "Edit item" });
   await successfulEdit.getByLabel("Title").fill(savedTitle);
-  await successfulEdit.getByLabel("Password").fill(updatedSecret);
   await activateWithKeyboard(page, successfulEdit.getByRole("button", { name: "Save changes" }));
   await page.getByRole("heading", { name: savedTitle }).waitFor();
   await page.getByText(/Revision 4 · key version 1/).waitFor();
@@ -409,11 +431,20 @@ try {
   assertNoSentinels(await rawDatabaseDump(page), sentinels, "cancelled-generation IndexedDB");
   assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "cancelled-generation runtime");
 
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
+  const lockForm = page.getByRole("form", { name: "Create item" });
+  await activateWithKeyboard(page, lockForm.getByRole("button", { name: "Generate password" }));
+  await page.waitForFunction(() => document.querySelector("#item-password")?.value.length === 20);
+  const lockedGeneratedPassword = await lockForm.getByLabel("Password").inputValue();
+  assert.equal(lockedGeneratedPassword.length, 20);
+  sentinels.push(lockedGeneratedPassword);
+  assertNoSentinels(await originPersistenceDump(page), sentinels, "pre-lock origin persistence");
   const activeWorkerBeforeLock = page.workers()[0];
   assert(activeWorkerBeforeLock !== undefined, "unlocked vault worker is absent");
   await page.getByRole("button", { name: "Lock now" }).click();
   await page.getByRole("heading", { name: "Welcome back" }).waitFor();
   assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "locked runtime");
+  assertNoSentinels(await originPersistenceDump(page), sentinels, "locked origin persistence");
   await waitForNoWorkers(page);
   await page.reload({ waitUntil: "networkidle" });
   await page.locator("#unlock-password").fill(password);

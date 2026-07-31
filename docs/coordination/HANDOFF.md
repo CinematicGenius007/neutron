@@ -1,136 +1,162 @@
 # Neutron session handoff
 
-Updated: 2026-07-29
+Updated: 2026-08-01
 Branch: `main`
-Reviewed implementation tip: `0f56f62`
+Implementation tip: `d94b925`
+Last independently reviewed and closed checkpoint: `0f6d9f8` (Task 0022)
 
 This is a navigation checkpoint, not a substitute for authoritative task files
 or accepted ADRs. Verify it against the repository before acting.
 
 ## Resume here
 
-1. Read `AGENTS.md` and every document it requires, in order.
-2. Run `git status --short` and `git log -7 --oneline`. Expect clean `main` with
-   this handoff/task-closure commit above `0f56f62`, `4e0c979`, and `21fec13`.
-3. Read accepted ADR 0013, Tasks 0018 through 0022, and
-   `docs/security/web-delivery.md` before changing the worker or UI boundary.
-4. Confirm Task 0022 is `done`. There is no active implementation task at this
-   checkpoint. Start the next milestone with a separate read-only preflight and
-   an exact allowed-path reservation.
+1. Read `AGENTS.md` and every document it requires, in order. `CLAUDE.md` adds
+   practical operating notes and does not override `AGENTS.md`.
+2. Run `git status --short` and `git log -8 --oneline`. Expect a clean `main`
+   with this handoff commit on top of `d94b925`, above `921a963`, `bbe63c3`,
+   `378a71b`, `b48653d`, `de69215`, and `0f6d9f8`.
+3. Read accepted ADR 0014, the plan review at
+   `docs/coordination/reviews/2026-08-01-stage-2-plan-review.md`, and Tasks 0023
+   through 0026.
+4. **Task 0025 is `review`, not `done`.** Its first independent review returned
+   BLOCK; the remediation at `d94b925` was sent back for a final verdict. If no
+   verdict is recorded in that task file, the review is unfinished. Do not close
+   it, and do not treat `pnpm test` as a passing gate until Task 0026 lands.
 5. Update this file before the next session stops, including if work is blocked
    or still in review.
 
 ## Checkpoint outcome
 
-Task 0022, worker-bound RFC 6238 TOTP display, is complete and independently
-security-reviewed.
+Three things happened this session: a decision was accepted, a dead security
+control was found and repaired, and the Stage 2 remainder was replanned.
 
-- ADR commit: `21fec13 docs(adr): accept worker-bound TOTP policy`.
-- Implementation commit: `4e0c979 feat(web): add worker-bound TOTP display`.
-- Review-remediation commit: `0f56f62 fix(web): revalidate TOTP after clock jumps`.
-- ADR review: initial BLOCK P0 0/P1 3/P2 2, final PASS P0 0/P1 0/P2 0.
-- Implementation review: initial BLOCK P0 0/P1 1/P2 0, final PASS P0 0/P1 0/P2 0.
+**ADR 0014 — passphrase generation policy — accepted** at `de69215` after an
+independent adversarial review returned BLOCK with P0 0, P1 5, P2 9. Every
+finding was remediated before acceptance. Two were substantive rather than
+editorial:
 
-The reviewed implementation now:
+- The byte-assembly rule permitted a sliding-window implementation in which one
+  byte served as the low byte of one draw and the high byte of the next, making
+  consecutive word choices dependent and falsifying the entropy claim. No test
+  in the required set would have caught it. Replaced with a disjoint-pair
+  discipline plus a test that pins the index sequence for a fixed byte stream.
+- The required CC BY 4.0 attribution would not have survived the build. Verified
+  against this repository's own pipeline: React's upstream `@license` banner
+  does not reach the emitted bundle. Attribution is now an exported string
+  rendered in the UI, plus `docs/third-party-notices.md`, plus a production-gate
+  assertion.
 
-- Computes SHA-1, SHA-256, and SHA-512 RFC 6238 codes only inside the unlocked
-  vault worker, using worker-local Web Crypto HMAC and canonical unpadded RFC
-  4648 Base32 decoding. SHA-1 is authorized only for this TOTP compatibility
-  use case.
-- Accepts an exact item revision reference rather than caller-supplied seed,
-  time, counter, or HMAC input. The worker point-reads the item and rejects
-  missing, malformed, wrong-type, or stale revisions before computation.
-- Returns only the exact revision, public TOTP policy, code, and validity bounds.
-  Protocol, runtime, broker, receipt-time, and UI checks fail closed on forged,
-  stale, cross-operation, expired, or otherwise malformed results.
-- Displays the code only in the active exact-revision TOTP view. Target/editor
-  changes, errors, expiry, lock, and unmount clear it; focus/visibility restoration
-  recomputes it; only one request is pending for a target.
-- Checks wall-clock freshness at most one second apart without asking the worker
-  to recompute while a receipt remains fresh. Forward or backward clock jumps
-  outside the inclusive-start/exclusive-expiry interval clear and refresh it.
-- Keeps the seed out of the new compute request/result and keeps codes out of
-  Neutron-controlled persistence, URLs, network, logs, and static output. This
-  does not remove the existing complete-item seed exposure to the active editor,
-  and it does not claim JavaScript/browser memory erasure.
-- Uses no new production dependency, service, server, or recurring-cost resource.
+Provenance is recorded honestly: EFF publishes no checksum, so the pinned
+upstream digest attests to one TLS retrieval on 2026-08-01, not to upstream
+authenticity, and the CC BY 4.0 reading depends on the list being original EFF
+material, evidenced by EFF's own announcement rather than by an explicit grant.
+
+**Task 0025 — vault-worker bundle boundary — implemented, in review.** The
+worker half of the build-time boundary check in `apps/web/vite.config.ts` had
+never executed. Vite bundles a `?worker&url` import in its own build and emits
+it into the parent as an asset, while the plugin only inspected outputs of type
+`chunk`, so the lookup always missed and the branch was skipped. ADR 0008 and
+Task 0018 both treated that assertion as enforced. The independent reviewer
+confirmed the defect by reproduction: the same violation builds cleanly at
+`378a71b` and fails at HEAD.
+
+A second instance of the same defect class was then found — predicates matched
+directory-anchored substrings, so a worker-only module moved one directory
+deeper stopped being matched — and fixed at `921a963` and `d94b925`.
+
+**Stage 2 was replanned** in `docs/coordination/reviews/2026-08-01-stage-2-plan-review.md`,
+which records the comparison the previous handoff did not make, and adds a
+functional UI remediation task that no previous task owned.
 
 ## Verification actually run
 
-Implementation and remediation gates passed:
+At `d94b925`, run serially:
 
 ```text
 pnpm install --frozen-lockfile               # already up to date
 pnpm typecheck                               # pass
 pnpm lint                                    # 106 files, pass
 pnpm format:check                            # 106 files, pass
-pnpm test                                    # 11 files, 94 tests, pass
+pnpm test                                    # 94 tests; see the caveat below
 pnpm build                                   # pass
 pnpm --filter @neutron/web test:browser      # 23 Chromium + 3 engine probes, pass
 pnpm --filter @neutron/web test:production   # emitted exact-CSP flow, pass
 git diff --check                             # pass
 ```
 
-The TOTP matrix separately ran Web Crypto probes in pinned Chromium, Firefox,
-and WebKit. The emitted-production flow independently checked the code with
-Node HMAC and scanned runtime, persistence, static, URL, log, and network
-surfaces. One combined local run hit the unchanged Chromium worker test's known
-`IndexedDB deletion blocked` teardown race; the immediate complete browser rerun
-passed 23/23 before the matrix and production gates. The final reviewer then
-independently reproduced every gate with a clean worktree at exact HEAD.
+Emitted artifacts are byte-identical to the pre-change build: `index-BFSv1aBR.js`
+237,586 bytes, `vault-worker-entry-CR0SpbvK.js` 596,854 bytes,
+`index-Dz9C09xS.css` 4,759 bytes, 7 files.
+
+**`pnpm test` is not a reliable gate right now.** The implementer first recorded
+its failure as machine load; the independent review refuted that by measurement.
+`packages/crypto/test/provider.test.ts > accepts exact upper bounds and rejects
+wrong associated data` runs 21.58 s isolated but 32.5 s inside the ordinary
+parallel gate, against a 30 s timeout, and fails about one run in five on an
+idle machine. Task 0026 owns it. Until that lands, a green `pnpm test` is weak
+evidence and a red one must be diagnosed rather than retried.
+
+Boundary control proven by deliberate violation, reverted immediately and not
+committed:
+
+```text
+worker imports UI      -> vault worker build contains forbidden module: …/react.production.js
+window imports storage -> window build contains forbidden module: …/src/storage/local-vault.ts
+```
 
 ## Deliberately unfinished
 
-- Stage 2 still lacks passphrase/wordlist generation, bounded encrypted local
-  search, offline recovery unlock UI, and the service-worker install/update/
-  rollback state machine required for the PWA milestone.
-- Clipboard/copy, QR generation/scanning, `otpauth://` parsing/import, adjacent
-  TOTP-step validation, and clock synchronization remain deliberately absent.
-- Browser/OS/password-manager/extension handling of plaintext remains part of
-  the documented client TCB and residual risk; Neutron cannot prove erasure of
-  immutable strings or engine-internal copies.
-- The checked production policy server is test infrastructure, not a deployed
-  `_headers` adapter. No deployment occurred.
-- Import/export completion, passkeys, sync, server adapters, backup/restore
-  drills, release provenance, and open-source release automation belong to
-  later stages.
+- Task 0025 has no recorded review verdict yet. It is `review`, not `done`.
+- Task 0023, the passphrase generator, is `proposed` and not started. Its two new
+  modules were drafted but deliberately not committed, because ADR 0014's
+  acceptance and Task 0025's shared build file had to settle first.
+- Task 0024, functional UI remediation, is `proposed` with 14 enumerated defects
+  and runs after 0023 so that the usability pass covers the passphrase UI.
+- Task 0026, the Argon2id timeout margin, is `ready` and unclaimed.
+- Stage 2 still lacks bounded encrypted local search and the service-worker
+  install/update/rollback state machine. Neither is preflighted. Bounded search
+  needs an ADR that either changes a persisted format or explicitly defers index
+  shards; `INDEX_PAYLOAD 0x12` is reserved in the envelope but unused.
+- The roadmap does **not** list offline recovery unlock as Stage 2 work, contrary
+  to what the previous handoff said. It is also blocked: its governing ADR
+  filename is reserved by the blocked Task 0009. Do not start it.
+- Idle auto-lock and clipboard copy are deliberately deferred. Both are security
+  decisions needing their own ADRs, not usability tweaks.
+- Clipboard/copy, QR generation and scanning, `otpauth://` parsing, adjacent-step
+  TOTP validation, and clock synchronization remain absent.
+- Browser, OS, password-manager, and extension handling of plaintext remains part
+  of the documented client TCB. Neutron cannot prove erasure of immutable strings.
 - Tasks 0004, 0006, 0008, and 0009 remain blocked; Task 0010 remains proposed.
-  Do not treat those designs as complete.
 - Do not use real credentials before the Stage 5 dogfood gate.
 
 ## Next safe direction
 
-Do not start implementation from this suggestion alone. The smallest natural
-next Stage 2 checkpoint is a passphrase-generator policy preflight. ADR 0012
-explicitly deferred it until a wordlist, normalization policy, provenance,
-update process, and entropy treatment are decided. The preflight should also
-decide whether a bundled immutable wordlist is acceptable for offline use and
-open-source redistribution, and it must verify licensing before any list enters
-the repository.
+Finish the Task 0025 review first. If the verdict is PASS, the reviewer closes
+it; if it blocks again, remediate before anything else, because every remaining
+task depends on that build file.
 
-Keep this checkpoint separate from local search, recovery unlock, clipboard,
-TOTP import/QR work, service-worker delivery, sync, server work, and deployment.
-If the preflight finds the wordlist/licensing policy premature, stop without
-code and recommend either bounded local search or recovery unlock as the next
-independently preflighted milestone.
+Then Task 0026, which is small and unblocks trustworthy gating, followed by Task
+0023 and then Task 0024 in that order.
 
 Suggested prompt for the next agent:
 
-> Resume Neutron from `docs/coordination/HANDOFF.md` and verify the clean,
-> independently reviewed Task 0022 checkpoint above `0f56f62`. Read every
-> document required by `AGENTS.md`. Before any edit, assign a separate read-only
-> agent to preflight one narrow passphrase-generator milestone. Require an
-> explicit ADR decision covering the exact bundled wordlist and license,
-> upstream digest/provenance, normalization and delimiter policy, entropy math,
-> word-count bounds/default, unbiased worker-local selection, update/rollback
-> compatibility, plaintext lifetime, named protocol shape, and deterministic
-> tests. If policy or licensing cannot be made repository-verifiable, stop with
-> no implementation and recommend the next bounded Stage 2 milestone. Otherwise
-> draft and independently review the ADR before claiming product paths; then
-> implement, run root/browser/emitted-production/leakage gates, obtain separate
-> adversarial review, remediate every P0/P1, commit a clean checkpoint, and
-> update this handoff. Do not bundle local search, recovery unlock, clipboard,
-> TOTP import/QR, service worker, sync, server, or deployment work.
+> Resume Neutron from `docs/coordination/HANDOFF.md`. Read every document
+> required by `AGENTS.md`, then verify `git status` is clean at `d94b925` and
+> that the referenced commits exist. First, determine whether Task 0025 has a
+> recorded independent review verdict. If it does not, obtain one from an agent
+> that did not implement it, and remediate every P0 and P1 before starting new
+> work. Do not mark it done yourself. Next, claim Task 0026 and give the
+> Argon2id upper-bounds test real margin without touching ADR 0010 parameters,
+> skipping the test, or adding retry-on-failure; prove it with ten consecutive
+> green full-gate runs. Then claim Task 0023 and implement the ADR 0014
+> passphrase generator exactly as specified — digest-pinned wordlist, disjoint
+> big-endian pair sampling with cutoff 62208, no index or word array anywhere,
+> attribution as an exported string rendered in the UI, and the emitted-production
+> flow recomputing the canonical digest from the built worker. Run every gate,
+> obtain separate adversarial review, remediate every P0/P1, commit a clean
+> checkpoint, and update this handoff. Do not bundle Task 0024, bounded local
+> search, recovery unlock, clipboard, TOTP import, service worker, sync, server,
+> or deployment work.
 
 ## Manual UI smoke test
 
@@ -146,3 +172,8 @@ Before the next session ends, record repository-verifiable task/review status,
 exact commits, dirty paths, commands actually run and results, unresolved
 findings, next safe action, and explicit non-goals here. Prefer a clean committed
 checkpoint. Never use the handoff to self-approve a security-sensitive task.
+
+One process note worth carrying forward: review separation was previously
+attested only by prose, since every commit shares one Git author and closed
+tasks clear `Owner`. Task 0025 records both implementer and reviewer identities
+and retains them. Keep doing that.

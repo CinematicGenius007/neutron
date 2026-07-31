@@ -1,13 +1,26 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
-const workerOnlyModules = [
-  "/packages/crypto/",
-  "/src/indexeddb-repository.ts",
-  "/src/local-vault.ts",
-  "/src/vault-worker-entry.ts",
-  "/src/vault-worker-runtime.ts",
+const workerOnlyPackages = ["/packages/crypto/"];
+const workerOnlyFiles = [
+  "indexeddb-repository.ts",
+  "local-vault.ts",
+  "vault-worker-entry.ts",
+  "vault-worker-runtime.ts",
 ];
+const windowOnlyFiles = ["app.tsx", "main.tsx"];
+const windowOnlyPackages = ["/react/", "/react-dom/"];
+
+/**
+ * Matches a module by file name anywhere in the tree rather than by its current
+ * directory. Matching `/src/local-vault.ts` as a substring would stop matching
+ * the moment someone moved that file one directory deeper, which is the same
+ * silent-non-enforcement failure this plugin already had once (Task 0025).
+ */
+function hasFileName(id: string, fileNames: readonly string[]): boolean {
+  const path = id.split("?")[0] ?? id;
+  return fileNames.includes(path.slice(path.lastIndexOf("/") + 1));
+}
 
 type GenerateBundle = NonNullable<Plugin["generateBundle"]>;
 
@@ -62,8 +75,12 @@ function enforceWindowBoundary(): Plugin {
     generateBundle: enforceModuleBoundary(
       "window build",
       (id) => id.endsWith("/src/main.tsx"),
-      (id) => workerOnlyModules.some((segment) => id.includes(segment)),
+      (id) =>
+        workerOnlyPackages.some((segment) => id.includes(segment)) ||
+        hasFileName(id, workerOnlyFiles),
       // The window references the worker script by URL; it does not import it.
+      // Checked before the rule above, whose file-name match would otherwise
+      // reject this reference.
       (id) => id.endsWith("/src/vault-worker-entry.ts?worker&url"),
     ),
   };
@@ -76,10 +93,8 @@ function enforceVaultWorkerBoundary(): Plugin {
       "vault worker build",
       (id) => id.endsWith("/src/vault-worker-entry.ts"),
       (id) =>
-        id.includes("/react/") ||
-        id.includes("/react-dom/") ||
-        id.endsWith("/src/app.tsx") ||
-        id.endsWith("/src/main.tsx"),
+        windowOnlyPackages.some((segment) => id.includes(segment)) ||
+        hasFileName(id, windowOnlyFiles),
     ),
   };
 }

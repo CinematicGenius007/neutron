@@ -90,6 +90,38 @@ Error: vault worker build contains forbidden module:
 with a non-zero exit. The violating edit was reverted immediately and
 `git status` confirmed the file clean; it is not committed.
 
+A second instance of the same defect class was found during review and fixed
+here. The forbidden-module predicates matched substrings that included the
+parent directory, such as `/src/local-vault.ts`, so a worker-only module moved
+or copied one directory deeper stopped being matched at all. Demonstrated by
+placing a non-trivial module at `apps/web/src/storage/indexeddb-repository.ts`
+and importing it from the window entry: the build failed, but on the unrelated
+`/packages/crypto/` rule catching a transitive import, while the rule that names
+that file never fired. Only the package-directory rule was relocation-robust.
+
+Predicates now match by file name anywhere in the tree, with the `?worker&url`
+ignore check evaluated first so the window's own reference to the worker script
+still passes. Re-verified with a module that imports no crypto at all — a
+`probeUnlock` function placed at `apps/web/src/storage/local-vault.ts` and
+imported from `main.tsx`:
+
+```text
+Error: window build contains forbidden module:
+  …/apps/web/src/storage/local-vault.ts
+```
+
+This is treated as in scope rather than deferred because it is the same failure
+this task exists to fix — a rule that silently does not apply — and it does not
+change *what* the boundary forbids, only whether the existing rules match.
+
+Known limitation, recorded rather than left implicit: the check inspects
+`chunk.modules`, so a module whose contents are entirely inlined or tree-shaken
+away does not appear and cannot be matched. An earlier probe exporting only
+`export const probe = 1;` built successfully for exactly that reason. This is
+inherent to bundle-graph inspection and is not a practical hole, because a
+module with no retained code contributes no retained behavior, but it does mean
+the check proves what reached the bundle rather than what was written.
+
 Emitted output is unchanged by the fix. Before and after are byte-identical:
 
 ```text
@@ -141,6 +173,13 @@ and will produce intermittent CI failures. It needs its own task.
   Moved to independent review; implementer identity recorded above so review
   separation is verifiable from the repository, which the preflight noted it
   previously was not.
+- 2026-08-01T05:05:00Z — The first review agent terminated on an API error
+  before reporting, leaving a partially built relocation probe in the working
+  tree. The probe was inspected, its file confirmed to be an exact copy of a
+  tracked file, the tree restored to `bbe63c3`, and the experiment finished
+  deliberately: it proved a second position-sensitivity defect, now fixed and
+  documented above. All gates rerun serially and pass. Returned to independent
+  review; no reviewer has yet recorded a verdict on this task.
 
 ## Handoff
 

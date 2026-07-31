@@ -48,7 +48,12 @@ function enforceModuleBoundary(
     const entry = [...chunks.values()].find((chunk) =>
       Object.keys(chunk.modules).some(isEntryModule),
     );
-    if (entry === undefined) throw new Error(`${label} entry chunk is absent`);
+    // Fail closed. This also fires for a build that legitimately has a
+    // different entry — a second worker, say — because the check cannot tell
+    // that apart from its own entry having moved. Adding another worker
+    // therefore requires keying this on the build's own input first.
+    if (entry === undefined)
+      throw new Error(`${label} entry chunk is absent, so its boundary could not be checked`);
     const pending = [entry.fileName];
     const reached = new Set<string>();
     while (pending.length > 0) {
@@ -74,14 +79,16 @@ function enforceWindowBoundary(): Plugin {
     name: "neutron-window-boundary",
     generateBundle: enforceModuleBoundary(
       "window build",
-      (id) => id.endsWith("/src/main.tsx"),
+      (id) => hasFileName(id, ["main.tsx"]),
       (id) =>
         workerOnlyPackages.some((segment) => id.includes(segment)) ||
         hasFileName(id, workerOnlyFiles),
       // The window references the worker script by URL; it does not import it.
       // Checked before the rule above, whose file-name match would otherwise
-      // reject this reference.
-      (id) => id.endsWith("/src/vault-worker-entry.ts?worker&url"),
+      // reject this reference. Matched by name for the same reason as the rest:
+      // a directory-anchored predicate here would turn the window's own
+      // legitimate reference into a forbidden module the moment the worker moved.
+      (id) => hasFileName(id, ["vault-worker-entry.ts"]) && id.endsWith("?worker&url"),
     ),
   };
 }
@@ -91,7 +98,7 @@ function enforceVaultWorkerBoundary(): Plugin {
     name: "neutron-vault-worker-boundary",
     generateBundle: enforceModuleBoundary(
       "vault worker build",
-      (id) => id.endsWith("/src/vault-worker-entry.ts"),
+      (id) => hasFileName(id, ["vault-worker-entry.ts"]) && !id.includes("?"),
       (id) =>
         windowOnlyPackages.some((segment) => id.includes(segment)) ||
         hasFileName(id, windowOnlyFiles),

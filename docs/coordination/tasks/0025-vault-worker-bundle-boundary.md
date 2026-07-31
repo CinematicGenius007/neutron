@@ -4,8 +4,8 @@ Status: review
 Owner: unassigned (implemented by `/root/task_0025_implementer`)
 Claimed: 2026-08-01T04:45:00Z
 Worktree/branch: shared-worktree (main)
-Reviewer: unassigned
-Review claimed: —
+Reviewer: `/root/task_0025_reviewer`
+Review claimed: 2026-08-01T05:10:00Z
 Depends on: —
 Blocks: —
 Security-sensitive: yes
@@ -62,12 +62,17 @@ shared build file that every other task depends on.
 - [x] A deliberate violation — importing a UI module into the worker graph —
       fails `pnpm --filter @neutron/web build` with a clear message. The proof
       is recorded in the task file; the violating change is not committed.
-- [x] The window-side assertion keeps working unchanged, and the existing
-      "unaccounted chunk" checks still fire.
+- [x] The window-side assertion still fires, and the existing "unaccounted
+      chunk" check still fires, verified by forcing a second entry chunk. Its
+      matching semantics did change; see "Semantic delta" below.
 - [x] No emitted artifact, filename, hash scheme, or artifact allowlist entry
       changes as a result of the fix.
-- [x] All repository gates plus the web browser and production gates pass, with
-      before-and-after emitted file lists and sizes recorded.
+- [~] Every gate except `pnpm test` passes reproducibly, with before-and-after
+      emitted file lists and sizes recorded. `pnpm test` is **not** reproducibly
+      green: it fails roughly one run in five on an idle machine for a reason
+      that predates this task and is unaffected by it. Task 0026 owns that.
+      This criterion is deliberately left unchecked rather than qualified into
+      looking satisfied.
 - [ ] Independent review confirms the control now fails closed, by reproducing
       the deliberate violation rather than by reading the diff.
 
@@ -111,11 +116,52 @@ Error: window build contains forbidden module:
 ```
 
 This is treated as in scope rather than deferred because it is the same failure
-this task exists to fix — a rule that silently does not apply — and it does not
-change *what* the boundary forbids, only whether the existing rules match.
+this task exists to fix: a rule that silently does not apply.
+
+### Semantic delta
+
+The implementer originally claimed, in this file and in the `921a963` commit
+message, that the change altered only whether the rules match and left the rule
+set unchanged. The independent review refuted that, and the correction is
+recorded here rather than by rewriting the commit. Matching by file name is a
+genuine semantic change in both directions:
+
+| Module id | Before | After |
+| --- | --- | --- |
+| `…/src/storage/local-vault.ts` | allowed | forbidden — intended |
+| any `node_modules` file named `local-vault.ts` | allowed | forbidden — broader |
+| `…/src/local-vault.tsx` | forbidden | allowed — narrower |
+| a path containing `?` before the file name | forbidden | allowed — narrower |
+
+The broadening is the intent. The two narrowings are accepted deliberately: the
+old behaviour matched `/src/local-vault.ts` as a *substring*, so it caught
+`local-vault.tsx` by accident rather than by rule, and a different file
+extension is a different module that the rule never named. The review scanned
+`node_modules` and every workspace package and found no third-party file bearing
+any of the six reserved names, so the broadening has no live false positive
+today; a future dependency introducing one would fail the build loudly rather
+than silently.
+
+The task's "out of scope" entry above forbids changing *what* the boundary
+protects — the set of modules the window and worker may not contain. That
+intent is intact: no module that ADR 0008 and Task 0018 meant to forbid became
+permitted, and no new category of module was added. What changed is the matching
+rule's precision. Recording this correction is preferable to leaving a claim in
+the record that measurement contradicts.
+
+### Known constraint on additional workers
+
+`worker.plugins` applies to every worker build, and this check identifies its
+own entry by file name, so it cannot distinguish "this is a different worker
+build" from "the vault worker entry has moved". Introducing a second worker —
+the service worker contemplated by ADR 0008, for instance — currently fails the
+build with `vault worker build entry chunk is absent, so its boundary could not
+be checked`. That is fail-closed and loud, not a hole, but the check will have
+to be keyed on each build's own declared input before a second worker can ship.
+Recorded here so that whoever hits it is not left guessing.
 
 Known limitation, recorded rather than left implicit: the check inspects
-`chunk.modules`, so a module whose contents are entirely inlined or tree-shaken
+`chunk.modules`, so a module whose contents are entirely tree-shaken
 away does not appear and cannot be matched. An earlier probe exporting only
 `export const probe = 1;` built successfully for exactly that reason. This is
 inherent to bundle-graph inspection and is not a practical hole, because a
@@ -138,27 +184,40 @@ pnpm install --frozen-lockfile               # already up to date
 pnpm typecheck                               # pass
 pnpm lint                                    # 106 files, pass
 pnpm format:check                            # 106 files, pass
-pnpm test                                    # 11 files, 94 tests, pass
+pnpm test                                    # NOT reproducibly green; see below
 pnpm build                                   # pass
 pnpm --filter @neutron/web test:browser      # 23 Chromium + 3 engine probes, pass
 pnpm --filter @neutron/web test:production   # emitted exact-CSP flow, pass
 git diff --check                             # pass
 ```
 
-One retry is recorded honestly. The first `pnpm test` run failed with
-`Test timed out in 30000ms` in
-`packages/crypto/test/provider.test.ts > accepts exact upper bounds and rejects
-wrong associated data`, while production builds were running concurrently. That
-package is untouched by this task. Investigation: the same file passes at the
-unmodified parent commit in 29.44 s, and passes with this change applied in
-19.05 s, 18.59 s, and 19.57 s across three isolated runs. The failure was
-machine load, not a regression.
+`pnpm test` is not reproducibly green, and the reason recorded here initially
+was wrong.
 
-That investigation surfaced a separate latent problem, recorded here rather than
-fixed because `packages/crypto` is outside this task's allowed paths: the
-Argon2id upper-bounds test runs at roughly 19 s nominal but has been observed at
-29–36 s under concurrent load, against a 30 s timeout. That margin is too thin
-and will produce intermittent CI failures. It needs its own task.
+`packages/crypto/test/provider.test.ts > accepts exact upper bounds and rejects
+wrong associated data` fails with `Test timed out in 30000ms`. The implementer
+first observed this while production builds were running concurrently and
+recorded the cause as machine load. The independent review refuted that by
+measurement: running the gate serially on an idle machine with nothing else
+running, the test still failed on 1 run in 5, and clearing the Vite cache did
+not change it.
+
+The measured behaviour is that the file exceeds its own timeout unaided under
+the ordinary parallel gate:
+
+```text
+isolated single-file run          21.58 s
+inside the ordinary parallel gate 32.5  s
+default timeout                   30    s
+observed failure rate             1 in 5, no concurrent load
+```
+
+`packages/crypto` is untouched by this task and cannot be affected by a Vite
+config change: there is no root Vitest configuration and Vitest never loads the
+web Vite config for that package. The defect is pre-existing and is now owned by
+**Task 0026**, which must land before anyone treats `pnpm test` as a reliable
+gate. It is recorded here as an open failure rather than as a passed gate with a
+footnote.
 
 ## Progress log
 
@@ -173,6 +232,14 @@ and will produce intermittent CI failures. It needs its own task.
   Moved to independent review; implementer identity recorded above so review
   separation is verifiable from the repository, which the preflight noted it
   previously was not.
+- 2026-08-01T05:30:00Z — Independent review returned BLOCK with P0 0, P1 1,
+  P2 3. Both claims under review were confirmed by reproduction at both commits.
+  The P1 was against this record, not the diff: the `pnpm test` failure was
+  attributed to concurrent load, and measurement on an idle machine refuted that
+  at a 1-in-5 rate. Corrected above, the gate criterion un-checked, and Task 0026
+  created to own it. P2-2 remediated by matching the remaining directory-anchored
+  predicates by file name as well; P2-1 and P2-3 recorded above as a known
+  constraint and a semantic delta rather than silently dropped.
 - 2026-08-01T05:05:00Z — The first review agent terminated on an API error
   before reporting, leaving a partially built relocation probe in the working
   tree. The probe was inspected, its file confirmed to be an exact copy of a

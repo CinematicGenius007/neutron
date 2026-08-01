@@ -355,7 +355,8 @@ describe("React vault shell", () => {
     expect(container?.textContent).toContain("Create your first encrypted item");
     expect(container?.querySelector('[aria-label="Item pages"]')).toBeNull();
     const firstCreate = byText("Create item");
-    expect(firstCreate.classList.contains("secondary")).toBe(false);
+    expect(firstCreate.classList.contains("secondary")).toBe(true);
+    expect(firstCreate.classList.contains("compact-primary")).toBe(true);
     await click("Create your first item");
     expect(container?.querySelector(".vault-grid")?.getAttribute("data-active-pane")).toBe(
       "detail",
@@ -382,6 +383,26 @@ describe("React vault shell", () => {
     expect(container?.querySelector(".vault-grid")?.getAttribute("data-active-pane")).toBe("list");
     expect(container?.textContent).not.toContain(secret);
     expect(document.activeElement).toBe(container?.querySelector("#items-title"));
+  });
+
+  it("never describes skipped corrupt records as a new empty vault", async () => {
+    class CorruptOnlyBroker extends FakeBroker {
+      override async listItemSummaries() {
+        return {
+          issues: [{ code: "corrupt-item" as const, id: "f".repeat(32) }],
+          items: [],
+        };
+      }
+    }
+
+    await render(new CorruptOnlyBroker());
+    await enter("unlock-password", "synthetic master password");
+    await click("Unlock vault");
+    expect(container?.textContent).toContain("1 encrypted record was skipped");
+    expect(container?.textContent).toContain("No items on this page.");
+    expect(container?.textContent).not.toContain("Your vault has no items yet.");
+    expect(container?.textContent).not.toContain("Create your first encrypted item");
+    expect(byText("Create item").classList.contains("compact-primary")).toBe(false);
   });
 
   it("abandons a failed recovery confirmation and starts enrollment from a clean broker", async () => {

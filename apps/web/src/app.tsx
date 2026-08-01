@@ -853,6 +853,13 @@ export function VaultApp({
     );
   }
 
+  const isFirstUseEmptyPage =
+    page !== undefined &&
+    page.items.length === 0 &&
+    page.issues.length === 0 &&
+    pageCursorHistory.length === 0 &&
+    page.nextCursor === undefined;
+
   return (
     <main className={screen === "unlocked" ? "vault-shell" : "centered-shell"}>
       <header className="brand">
@@ -1032,10 +1039,7 @@ export function VaultApp({
                   >
                     Items
                   </h2>
-                  {page !== undefined &&
-                  page.items.length === 0 &&
-                  pageCursorHistory.length === 0 &&
-                  page.nextCursor === undefined ? null : (
+                  {isFirstUseEmptyPage ? null : (
                     <span>
                       Page {pageCursorHistory.length + 1}
                       {page !== undefined
@@ -1048,14 +1052,7 @@ export function VaultApp({
                 </div>
                 <button
                   type="button"
-                  className={
-                    page !== undefined &&
-                    page.items.length === 0 &&
-                    pageCursorHistory.length === 0 &&
-                    page.nextCursor === undefined
-                      ? undefined
-                      : "secondary"
-                  }
+                  className={isFirstUseEmptyPage ? "secondary compact-primary" : "secondary"}
                   disabled={busy}
                   ref={(node) => {
                     if (node !== null && focusCreateAfterRender.current) {
@@ -1080,11 +1077,11 @@ export function VaultApp({
               {page !== undefined && page.items.length === 0 ? (
                 <div className="empty item-list-empty">
                   <p>
-                    {pageCursorHistory.length === 0 && page.nextCursor === undefined
+                    {isFirstUseEmptyPage
                       ? "Your vault has no items yet."
                       : "No items on this page."}
                   </p>
-                  {pageCursorHistory.length === 0 && page.nextCursor === undefined ? (
+                  {isFirstUseEmptyPage ? (
                     <p>Create a login, secure note, TOTP seed, backup code, or JSON item.</p>
                   ) : null}
                 </div>
@@ -1198,10 +1195,7 @@ export function VaultApp({
                 />
               ) : selected === undefined ? (
                 <div className="empty-detail">
-                  {page !== undefined &&
-                  page.items.length === 0 &&
-                  pageCursorHistory.length === 0 &&
-                  page.nextCursor === undefined ? (
+                  {isFirstUseEmptyPage ? (
                     <>
                       <p className="empty-mark" aria-hidden="true">
                         +

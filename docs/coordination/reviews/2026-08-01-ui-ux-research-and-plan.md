@@ -1,7 +1,7 @@
 # UI/UX research and staged plan — 2026-08-01
 
-Author: `/root`  
-Scope: current Stage 2 local-vault UI at commit `69572de`  
+Author: `/root`
+Scope: current Stage 2 local-vault UI at commit `69572de`
 Evidence: primary-source review plus a real Chromium audit at 1440×1000,
 390×844, and 320×640 using synthetic local-vault data only
 
@@ -142,4 +142,3 @@ This research does not authorize changes to cryptography, persisted or worker
 protocols, recovery semantics, master-password reveal, clipboard access, idle
 locking, search, service workers, dependencies, fonts, telemetry, or network
 behavior. It adds no claim that Neutron is ready for real credentials.
-

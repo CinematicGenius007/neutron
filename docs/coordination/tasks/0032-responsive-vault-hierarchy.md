@@ -1,13 +1,13 @@
 # TASK 0032 — Responsive vault hierarchy and empty state
 
-Status: review  
-Owner: unassigned (implemented by `/root`)  
-Claimed: 2026-08-01T13:30:34Z  
-Worktree/branch: shared-worktree (`main`)  
-Reviewer: unassigned  
-Review claimed: —  
-Depends on: 0029, 0031  
-Blocks: —  
+Status: review
+Owner: unassigned (implementation and remediation by `/root`)
+Claimed: 2026-08-01T20:06:00Z
+Worktree/branch: shared-worktree (`main`)
+Reviewer: unassigned
+Review claimed: —
+Depends on: 0029, 0031
+Blocks: —
 Security-sensitive: yes
 
 ## Outcome
@@ -115,6 +115,30 @@ secret reset after **Back to items**, dirty-editor behavior, and desktop parity.
 - 2026-08-01T13:48:00Z — Implementation finished. Ownership cleared and task
   moved to `review`; the orchestrator will commit an identifiable candidate,
   assign a separate reviewer, and leave the review criterion unchecked.
+- 2026-08-01T19:53:33Z — Candidate committed as `99e4c9f`. The commit tool call
+  remained pending for approximately six hours before returning success; no
+  commands, edits, or new task work were started during that interval.
+  Orchestrator assigned `/root/task_0032_review` to review that exact commit.
+- 2026-08-01T20:06:00Z — Independent review BLOCK on `99e4c9f` accepted in
+  full (P0 0 / P1 1 / P2 2). Orchestrator returned the task to `active`, cleared
+  review ownership, and claimed the bounded corrupt-only predicate, CTA
+  prominence, adversarial-test, and exact-diff whitespace remediation.
+- 2026-08-01T20:23:44Z — Remediation uses one named first-use predicate that
+  requires zero valid items and zero corrupt-record issues. An adversarial
+  corrupt-only page keeps its warning and ordinary page wording. Desktop now
+  has one primary first-item action; compact CSS promotes the only visible list
+  action. Production assertions wait for settled computed styles at 320 and
+  1280 pixels. All candidate whitespace diagnostics were removed.
+- 2026-08-01T20:23:44Z — Remediation verification passed: frozen install;
+  typecheck; lint/format over 110 files; 13 unit files / 110 tests; root build
+  with 7 verified production files; browser tests with 4 files / 37 Chromium
+  tests and 3 files / 3 engine-matrix tests; exact-CSP production Chromium flow;
+  and exact `git diff --check` against both `99e4c9f` and `69572de`. Two earlier
+  production attempts caught misplaced/immediate new style assertions; only the
+  test locations/timing were corrected, and the complete flow then passed.
+- 2026-08-01T20:23:44Z — Remediation finished. Ownership cleared and task
+  returned to `review`; the confirmation criterion remains unchecked pending a
+  committed artifact and reassignment to the independent reviewer.
 
 ## Handoff
 
@@ -124,9 +148,98 @@ page state. **Back to items** clears selected detail and its reveal component
 before returning focus to Items. No dependency, persistence, worker/protocol,
 crypto, recovery, metadata, or network path changed.
 
-Awaiting independent review of the committed candidate. Do not start ADR-0016
-idle auto-lock concurrently; it overlaps the same UI paths.
+Initial exact commit `99e4c9f` is blocked by the review below. Its complete
+bounded remediation is ready for an identifiable commit and independent
+confirmation. Do not start ADR-0016 idle auto-lock concurrently; it overlaps
+the same UI paths.
 
 ## Review
 
 Pending independent review of a committed candidate.
+
+### 2026-08-01T20:03:52Z — BLOCK on exact commit `99e4c9f`
+
+Reviewer: `/root/task_0032_review` (did not implement the candidate)
+
+Verdict: **BLOCK — P0 0 / P1 1 / P2 2**.
+
+#### P1 — corrupt-only first pages are represented as an empty vault
+
+The new empty-vault predicate checks `page.items.length === 0`, first-page
+history, and absence of `nextCursor`, but does not require
+`page.issues.length === 0`. A first page containing one or more authenticated
+`corrupt-item` issues and no decryptable summaries therefore renders **Your
+vault has no items yet**, both first-item actions, and **Create your first
+encrypted item** while the corruption warning says encrypted records were
+skipped. The same page cannot truthfully be both a new empty vault and a vault
+with unreadable encrypted records. The prominent first-use treatment can cause
+a person to proceed as if no prior data exists, and it fails the task's
+"genuinely empty" boundary.
+
+Use one named predicate for the true first-use state and include zero issues in
+it. Reuse that predicate for the page subtitle, button treatment, empty-list
+copy, pagination decision where applicable, and empty-detail action. Add an
+adversarial browser case with zero summaries and at least one synthetic
+`corrupt-item` issue that proves the corruption warning remains, the ordinary
+**No items on this page.** wording is used, and neither empty-vault claim is
+rendered.
+
+#### P2 — desktop presents two equally prominent first-item actions
+
+At a genuine empty first page, the list-header **Create item** button loses its
+`secondary` class while the simultaneously visible desktop detail pane adds a
+second primary **Create your first item** button. This does not satisfy the task
+outcome's "one obvious first-item action" as cleanly as claimed. Preserve one
+primary action on wide master/detail screens while keeping the only visible
+compact action prominent, and cover the distinction with computed-style or
+class assertions rather than text presence alone.
+
+#### P2 — the committed candidate fails an exact diff whitespace check
+
+`git diff --check 69572de 99e4c9f` and `git show --check 99e4c9f` report eleven
+diagnostics: Markdown trailing spaces in the new task/research metadata and a
+blank line at the research file's EOF. The progress log's bare `git diff
+--check` could return success after staging because it examines only unstaged
+changes; it is not evidence that the identifiable candidate itself is clean.
+Remove the reported whitespace and record an exact parent-to-candidate check
+for the remediation artifact.
+
+#### Controls independently confirmed
+
+- At 320 and 760 CSS pixels, computed styles expose only the list before
+  selection and only the editor/detail after activation; at 761 pixels both
+  panes are `block`. The tested layouts had no horizontal overflow.
+- Create cancellation returns the compact UI to the list and focuses **Create
+  item**. A selected synthetic login remained masked until explicit reveal;
+  **Back to items** removed the synthetic secret from the complete HTML,
+  restored `#items-title` focus, and exposed only the list pane.
+- Pagination remains present for first pages with a next cursor and later pages
+  with a previous cursor. Existing dirty-draft, busy-decision, immediate-lock,
+  and secret-surface regressions remain green.
+- The production diff changes no dependency, persistence, worker/protocol,
+  crypto, recovery, metadata, or network implementation. The research note is
+  scoped to its Chromium observations, distinguishes normative WCAG material
+  from an application-specific Material breakpoint adaptation, and its cited
+  primary-source claims were independently checked.
+
+Reviewer commands and results against exact implementation commit `99e4c9f`:
+
+```text
+pnpm typecheck
+  pass
+pnpm --filter @neutron/web test:browser
+  sandbox attempt: infrastructure failure before tests; listen EPERM on ::1
+  approved local-listen rerun: pass; 4 files / 36 Chromium tests and
+  3 files / 3 engine-matrix tests
+pnpm --filter @neutron/web test:production
+  pass; Verified 7 production files; Production CSP Chromium flow passed
+agent-browser --session neutron-task0032-review <local 320/760/761 probes>
+  pass; computed single-pane/desktop parity, create-cancel focus, reveal-reset
+  back navigation, target size, and horizontal-overflow checks
+git diff --check 69572de 99e4c9f
+  fail; 11 whitespace diagnostics in the two new Markdown records
+```
+
+The task remains in `review`. Remediation must be committed as an identifiable
+artifact and returned for independent confirmation; this review changes no
+product code or handoff state.

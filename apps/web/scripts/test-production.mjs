@@ -481,6 +481,17 @@ try {
     "none",
   );
   assert.equal(await page.getByRole("navigation", { name: "Item pages" }).count(), 0);
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.querySelector(".item-list .section-heading button"))
+        .backgroundColor === "rgb(112, 225, 200)",
+  );
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Create item" })
+      .evaluate((node) => getComputedStyle(node).backgroundColor),
+    "rgb(112, 225, 200)",
+  );
   await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
   await page.getByRole("form", { name: "Create item" }).waitFor();
   assert.equal(
@@ -510,6 +521,11 @@ try {
     "none",
   );
   await page.setViewportSize({ width: 1280, height: 720 });
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.querySelector(".item-list .section-heading button"))
+        .backgroundColor === "rgba(0, 0, 0, 0)",
+  );
   assert.equal(
     await page.locator(".item-list").evaluate((node) => getComputedStyle(node).display),
     "block",
@@ -517,6 +533,18 @@ try {
   assert.equal(
     await page.locator(".detail-panel").evaluate((node) => getComputedStyle(node).display),
     "block",
+  );
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Create item" })
+      .evaluate((node) => getComputedStyle(node).backgroundColor),
+    "rgba(0, 0, 0, 0)",
+  );
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Create your first item" })
+      .evaluate((node) => getComputedStyle(node).backgroundColor),
+    "rgb(112, 225, 200)",
   );
 
   const originalTitle = "Production CRUD fixture";

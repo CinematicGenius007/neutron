@@ -436,6 +436,14 @@ h1 {
   .compact-back {
     display: inline-flex;
   }
+  .compact-primary.secondary {
+    border-color: #70e1c8;
+    background: #70e1c8;
+    color: #071713;
+  }
+  .compact-primary.secondary:hover {
+    background: #91ead7;
+  }
   .empty-detail {
     min-height: 12rem;
   }

@@ -467,3 +467,70 @@ implementation. Do not infer that idle auto-lock is implemented, that Stage 2
 or Stage 5 is complete, or that real credentials may be used. The separate
 wordlist-delimiter and recovery-copy findings still require their own ADR
 decisions and must not be bundled into idle auto-lock.
+
+## TASK-0032 implementation checkpoint — 2026-08-01T19:53:33Z
+
+The user authorized a UI/UX research and implementation checkpoint before
+ADR-0016. Primary-source findings and a real Chromium audit using synthetic data
+only are durable in
+`docs/coordination/reviews/2026-08-01-ui-ux-research-and-plan.md`. That record
+defines six staged experience tranches and explicitly does not authorize
+recovery, master-password, clipboard, idle-lock, search, protocol, crypto,
+dependency, telemetry, or network changes.
+
+TASK-0032 implementation is committed at exact candidate `99e4c9f` and is in
+`review`, assigned to `/root/task_0032_review`. At the existing 760-pixel
+breakpoint, the vault now shows one active list or detail/editor pane; wider
+screens retain master/detail. Compact selected detail has **Back to items**,
+which removes the selected component and its reveal state before focusing the
+Items heading. A truly empty first page has an actionable empty state and no
+pagination; later empty pages retain page-specific navigation behavior.
+
+Implementation verification passed: frozen install; typecheck; lint/format over
+110 files; 13 unit files / 110 tests; root build with 7 verified production
+files; browser tests with 4 files / 36 Chromium tests plus 3 files / 3
+engine-matrix tests; exact-CSP production Chromium flow; and `git diff --check`.
+The first production run exposed a wrong new test expectation about create-cancel
+focus; the assertion was corrected to the existing **Create item** focus target,
+and the full production flow passed without product-code remediation. Root unit
+tests and build briefly overlapped after both commands yielded sessions; both
+passed without retry.
+
+The next safe action is independent review of exact commit `99e4c9f`, including
+computed compact/desktop visibility, focus return, reveal removal, dirty-editor
+guards, pagination boundaries, and the task's research claims. Do not start
+ADR-0016 or any new UI task until TASK-0032 closes. No connected CI run,
+deployment, Stage 5 approval, or permission to use real credentials is claimed.
+
+## TASK-0032 review BLOCK and remediation checkpoint — 2026-08-01T20:23:44Z
+
+Independent review of exact implementation commit `99e4c9f` returned
+**BLOCK — P0 0 / P1 1 / P2 2**. A corrupt-only first page was falsely treated as
+a new empty vault; desktop had two equally primary first-item actions; and the
+exact candidate diff exposed eleven whitespace diagnostics that the earlier
+unstaged-only check missed. The reviewer otherwise confirmed the 320/760/761
+computed pane boundary, create-cancel and back-to-list focus, reveal removal,
+pagination boundaries, lack of horizontal overflow, research scope, typecheck,
+both browser matrices, and the exact-CSP production flow.
+
+All three findings are remediated in the current review tree. One named
+first-use predicate now requires zero summaries and zero corruption issues. A
+corrupt-only adversarial test proves the warning and ordinary page wording
+remain without first-use claims. The list-header action remains secondary on
+desktop, where the detail pane owns the one primary action; compact CSS promotes
+the list action when the detail pane is hidden. Exact parent/candidate whitespace
+checks are clean.
+
+Remediation verification passed: frozen install; typecheck; lint/format over 110
+files; 13 unit files / 110 tests; root build with 7 verified production files;
+browser tests with 4 files / 37 Chromium tests plus 3 files / 3 engine-matrix
+tests; exact-CSP production Chromium flow; and exact diff checks against both
+`99e4c9f` and baseline `69572de`. Two interim production attempts failed new
+style-test assertions (one placed in the still-compact editor state and one
+sampling an active CSS transition); the assertions were corrected without a
+product behavior change and the complete production flow then passed.
+
+The next safe action is to commit this bounded remediation, record its exact
+hash, and reassign `/root/task_0032_review` for confirmation. Do not start
+ADR-0016 or any new task first. No connected CI run, deployment, Stage 5
+approval, or permission to use real credentials is claimed.

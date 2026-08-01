@@ -562,3 +562,26 @@ a fresh independent confirmation reviewer in TASK-0032, and review exact
 `783ba59`. Do not rerun implementation or start ADR-0016 first. No connected CI
 run, deployment, Stage 5 approval, or permission to use real credentials is
 claimed.
+
+## TASK-0032 closure — 2026-08-01T20:48:56Z
+
+A fresh independent confirmation review of exact remediation commit `783ba59`
+returned **PASS — P0 0 / P1 0 / P2 0**. TASK-0032 is `done`. The reviewer
+confirmed the single zero-issue first-use predicate, corrupt-only warning and
+ordinary wording, one settled primary CTA at compact and desktop widths,
+original focus/reveal/dirty/pagination controls, allowed-path scope, and lack of
+protocol, crypto, persistence, recovery, metadata, dependency, or network drift.
+
+Reviewer commands passed without relying on the implementer's record:
+typecheck; browser tests with 4 files / 37 Chromium tests and 3 files / 3
+engine-matrix tests; exact-CSP production flow with 7 verified production files;
+exact diff checks from `99e4c9f` and `69572de` to `783ba59`; `git show --check`;
+and the seven-path scope diff. The confirmation changed only TASK-0032's review
+record, final criterion, and lifecycle status.
+
+The next safe roadmap direction returns to ADR-0016 idle auto-lock, beginning
+with a bounded decision proposal and independent ADR review before code. Do not
+bundle clipboard, recovery-copy wording/behavior, wordlist delimiter, search,
+service-worker delivery, or schema-driven item types into that decision. No
+connected CI run, deployment, Stage 5 approval, or permission to use real
+credentials is claimed.

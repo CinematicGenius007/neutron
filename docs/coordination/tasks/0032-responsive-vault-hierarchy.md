@@ -1,11 +1,11 @@
 # TASK 0032 — Responsive vault hierarchy and empty state
 
-Status: review
+Status: done
 Owner: unassigned (implementation and remediation by `/root`)
 Claimed: 2026-08-01T20:06:00Z
 Worktree/branch: shared-worktree (`main`)
-Reviewer: unassigned (confirmation review interrupted by user stop)
-Review claimed: —
+Reviewer: `/root/task_0032_review`
+Review claimed: 2026-08-01T20:47:19Z
 Depends on: 0029, 0031
 Blocks: —
 Security-sensitive: yes
@@ -71,7 +71,7 @@ persisted, transmitted, or public API decision changes.
       synthetic data only.
 - [x] No dependency, persistence, worker/protocol, crypto, recovery, metadata,
       or network behavior changes.
-- [ ] A separate reviewer reviews an identifiable committed artifact and records
+- [x] A separate reviewer reviews an identifiable committed artifact and records
       P0/P1/P2 findings before closure.
 
 ## Verification
@@ -149,6 +149,10 @@ secret reset after **Back to items**, dirty-editor behavior, and desktop parity.
   verdict or review evidence was returned or recorded, so the task remains
   `review`, the separate-review criterion remains unchecked, and reviewer
   ownership is cleared for a fresh assignment. No new task was started.
+- 2026-08-01T20:47:19Z — Continuation verified clean `main` at stop-checkpoint
+  `0644d4b`, exact remediation `783ba59`, no other active/review task, and clean
+  exact diff checks. Orchestrator reassigned `/root/task_0032_review` for a
+  fresh confirmation of exact `783ba59`; no implementation or later task began.
 
 ## Handoff
 
@@ -254,3 +258,56 @@ git diff --check 69572de 99e4c9f
 The task remains in `review`. Remediation must be committed as an identifiable
 artifact and returned for independent confirmation; this review changes no
 product code or handoff state.
+
+### 2026-08-01T20:48:01Z — remediation confirmation on exact commit `783ba59`
+
+Reviewer: `/root/task_0032_review` (same independent reviewer; did not implement
+the candidate or remediation)
+
+Verdict: **PASS — P0 0 / P1 0 / P2 0**.
+
+The remediation discharges every prior finding. A single named
+`isFirstUseEmptyPage` predicate requires a loaded page, zero summaries, zero
+corrupt-record issues, first-page history, and no next cursor. The page label,
+list copy, explanatory copy, compact button treatment, and desktop empty-detail
+action all consume that predicate rather than independently approximating the
+state. The new corrupt-only adversarial case returns one synthetic
+`corrupt-item` issue with zero summaries and proves the warning and ordinary
+**No items on this page.** wording remain while both empty-vault claims and the
+compact-primary treatment are absent.
+
+The list-header action is now always semantically secondary. Only the
+`compact-primary` media-query rule promotes it at widths through 760 pixels,
+where the desktop empty-detail action is hidden; above the breakpoint the list
+action settles to a transparent secondary background and the visible
+**Create your first item** action remains the sole primary CTA. The exact-CSP
+flow waits for and asserts both settled computed-style states instead of relying
+only on class names.
+
+The original compact/desktop hierarchy, create-cancel focus, selected-detail
+return focus, revealed-secret removal, dirty-draft guards, pagination, immediate
+lock, and complete runtime leakage controls remain covered by the passing full
+browser and exact-CSP flows. The remediation adds no dependency or change to
+protocol, worker, persistence, crypto, recovery, metadata, or network behavior.
+Its changed paths remain within TASK-0032's declared scope.
+
+Independent confirmation commands against exact remediation commit `783ba59`:
+
+```text
+pnpm typecheck
+  pass
+pnpm --filter @neutron/web test:browser
+  pass; 4 files / 37 Chromium tests and 3 files / 3 engine-matrix tests
+pnpm --filter @neutron/web test:production
+  pass; Verified 7 production files; Production CSP Chromium flow passed
+git diff --check 99e4c9f 783ba59
+git diff --check 69572de 783ba59
+git show --check --format= 783ba59
+  pass; no diagnostics from any exact check
+git diff --name-status 99e4c9f 783ba59
+  pass; only the seven TASK-0032 allowed paths changed
+```
+
+TASK-0032 is closed. This confirmation changed only the task's review record,
+final criterion, and lifecycle status; it did not modify product code or
+`docs/coordination/HANDOFF.md`.

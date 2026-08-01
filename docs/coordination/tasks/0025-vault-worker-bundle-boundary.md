@@ -1,6 +1,6 @@
 # TASK 0025 — Restore vault-worker bundle boundary enforcement
 
-Status: review
+Status: done
 Owner: unassigned (implemented by `/root/task_0025_implementer`)
 Claimed: 2026-08-01T04:45:00Z
 Worktree/branch: shared-worktree (main)
@@ -73,15 +73,17 @@ shared build file that every other task depends on.
       that predates this task and is unaffected by it. Task 0026 owns that.
       This criterion is deliberately left unchecked rather than qualified into
       looking satisfied.
-- [ ] Independent review confirms the control now fails closed, by reproducing
+- [x] Independent review confirms the control now fails closed, by reproducing
       the deliberate violation rather than by reading the diff.
 
 ## Verification
 
-The fix registers the worker-side check through `worker.plugins`, which is the
-only place a plugin applies to Vite's separate worker build, and makes both
-checks throw when the entry chunk they are supposed to walk is absent. Silently
-skipping is exactly how the defect hid.
+The fix registers the worker-side check through `worker.plugins`, the mechanism
+Vite documents for applying a plugin to its separate worker build, confirmed
+empirically here. Vite 8 also exposes `applyToEnvironment`, which was not
+tested, so this is the mechanism that works rather than provably the only one.
+Both checks now throw when the entry chunk they are supposed to walk is absent;
+silently skipping is exactly how the defect hid.
 
 Deliberate violation: appending `import "./app.js";` to
 `apps/web/src/vault-worker-entry.ts` and building produced
@@ -215,7 +217,7 @@ observed failure rate             1 in 5, no concurrent load
 `packages/crypto` is untouched by this task and cannot be affected by a Vite
 config change: there is no root Vitest configuration and Vitest never loads the
 web Vite config for that package. The defect is pre-existing and is now owned by
-**Task 0026**, which must land before anyone treats `pnpm test` as a reliable
+**Task 0026** (`0026-provider-bounds-test-timeout.md`), which must land before anyone treats `pnpm test` as a reliable
 gate. It is recorded here as an open failure rather than as a passed gate with a
 footnote.
 
@@ -232,14 +234,6 @@ footnote.
   Moved to independent review; implementer identity recorded above so review
   separation is verifiable from the repository, which the preflight noted it
   previously was not.
-- 2026-08-01T05:30:00Z — Independent review returned BLOCK with P0 0, P1 1,
-  P2 3. Both claims under review were confirmed by reproduction at both commits.
-  The P1 was against this record, not the diff: the `pnpm test` failure was
-  attributed to concurrent load, and measurement on an idle machine refuted that
-  at a 1-in-5 rate. Corrected above, the gate criterion un-checked, and Task 0026
-  created to own it. P2-2 remediated by matching the remaining directory-anchored
-  predicates by file name as well; P2-1 and P2-3 recorded above as a known
-  constraint and a semantic delta rather than silently dropped.
 - 2026-08-01T05:05:00Z — The first review agent terminated on an API error
   before reporting, leaving a partially built relocation probe in the working
   tree. The probe was inspected, its file confirmed to be an exact copy of a
@@ -248,11 +242,47 @@ footnote.
   documented above. All gates rerun serially and pass. Returned to independent
   review; no reviewer has yet recorded a verdict on this task.
 
+
+- 2026-08-01T05:30:00Z — Independent review returned BLOCK with P0 0, P1 1,
+  P2 3. Both claims under review were confirmed by reproduction at both commits.
+  The P1 was against this record, not the diff: the `pnpm test` failure was
+  attributed to concurrent load, and measurement on an idle machine refuted that
+  at a 1-in-5 rate. Corrected above, the gate criterion un-checked, and Task 0026
+  created to own it. P2-2 remediated by matching the remaining directory-anchored
+  predicates by file name as well; P2-1 and P2-3 recorded above as a known
+  constraint and a semantic delta rather than silently dropped.
+
 ## Handoff
 
 Summarize changed behavior, important files, decisions, risks, and follow-up work.
 
 ## Review
 
-Reviewer, date, findings, and disposition. Required; the implementer must not
-self-approve.
+Initial independent review by `/root/task_0025_reviewer`: **BLOCK**, P0 0, P1 1,
+P2 3. Both claims under review were confirmed by reproduction at both commits —
+the same violation builds cleanly at `378a71b` and fails at `921a963`, and the
+relocated crypto-free module evaded the rule at `bbe63c3` and is named at
+`921a963`. The sole P1 was against this task's record rather than its diff: the
+`pnpm test` failure had been attributed to concurrent build load, and serial
+measurement on an idle machine refuted that at a 1-in-5 rate.
+
+Final independent re-review of remediation commit `d94b925`: **PASS**, P0 0,
+P1 0 against this task, P2 0 outstanding. The reviewer constructed the relocated
+vault-worker case and confirmed it now builds, then confirmed the check had not
+merely gone quiet by re-introducing a violation into the relocated worker and
+observing it still throw. It also attacked the widened predicates with a rogue
+worker entry, a decoy second `main.tsx`, and a forced extra chunk; all held,
+because the unaccounted-chunk invariant means every chunk is either walked and
+scanned or the build fails. Emitted artifacts were verified byte-identical to
+`378a71b` twice.
+
+Both P2s from the re-review are applied above: the progress log is now in
+chronological order, and the claim that `worker.plugins` is the only mechanism
+that reaches Vite's worker build is softened to what was actually tested.
+
+The re-review raised one P1 against **Task 0026**, not this task, and it was
+correct: that task's stated root cause was itself an unmeasured attribution. It
+has been rewritten and renamed; see `0026-provider-bounds-test-timeout.md`.
+
+The reviewer edited no committed file and confirmed a clean working tree after
+every one of its seventeen destructive probes across both rounds.

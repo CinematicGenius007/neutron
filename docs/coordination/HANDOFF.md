@@ -2,8 +2,8 @@
 
 Updated: 2026-08-01
 Branch: `main`
-Implementation tip: `d94b925`
-Last independently reviewed and closed checkpoint: `0f6d9f8` (Task 0022)
+Implementation tip: this handoff commit, above `d94b925`
+Last independently reviewed and closed checkpoint: Task 0025, PASS at `d94b925`
 
 This is a navigation checkpoint, not a substitute for authoritative task files
 or accepted ADRs. Verify it against the repository before acting.
@@ -18,10 +18,9 @@ or accepted ADRs. Verify it against the repository before acting.
 3. Read accepted ADR 0014, the plan review at
    `docs/coordination/reviews/2026-08-01-stage-2-plan-review.md`, and Tasks 0023
    through 0026.
-4. **Task 0025 is `review`, not `done`.** Its first independent review returned
-   BLOCK; the remediation at `d94b925` was sent back for a final verdict. If no
-   verdict is recorded in that task file, the review is unfinished. Do not close
-   it, and do not treat `pnpm test` as a passing gate until Task 0026 lands.
+4. **Task 0025 is `done`**, independently reviewed: BLOCK, then PASS at
+   `d94b925` with P0 0 and P1 0. Do not treat `pnpm test` as a passing gate
+   until Task 0026 lands.
 5. Update this file before the next session stops, including if work is blocked
    or still in review.
 
@@ -51,7 +50,7 @@ upstream digest attests to one TLS retrieval on 2026-08-01, not to upstream
 authenticity, and the CC BY 4.0 reading depends on the list being original EFF
 material, evidenced by EFF's own announcement rather than by an explicit grant.
 
-**Task 0025 — vault-worker bundle boundary — implemented, in review.** The
+**Task 0025 — vault-worker bundle boundary — done, independently reviewed.** The
 worker half of the build-time boundary check in `apps/web/vite.config.ts` had
 never executed. Vite bundles a `?worker&url` import in its own build and emits
 it into the parent as an asset, while the plugin only inspected outputs of type
@@ -106,13 +105,18 @@ window imports storage -> window build contains forbidden module: …/src/storag
 
 ## Deliberately unfinished
 
-- Task 0025 has no recorded review verdict yet. It is `review`, not `done`.
 - Task 0023, the passphrase generator, is `proposed` and not started. Its two new
   modules were drafted but deliberately not committed, because ADR 0014's
   acceptance and Task 0025's shared build file had to settle first.
 - Task 0024, functional UI remediation, is `proposed` with 14 enumerated defects
   and runs after 0023 so that the usability pass covers the passphrase UI.
-- Task 0026, the Argon2id timeout margin, is `ready` and unclaimed.
+- Task 0026, the provider upper-bounds test timeout, is `ready` and unclaimed.
+  It was created misdiagnosed — named for Argon2id, which the failing test never
+  calls — and rewritten after the reviewer measured per-test durations. Its real
+  cost is a 16 MiB `randomBytes` plus a 16 MiB AEAD round trip, and the 30 second
+  limit is an explicit literal at `packages/crypto/test/provider.test.ts:248`,
+  not a framework default. Do not make it faster by shrinking those buffers;
+  they are the upper bounds the test exists to prove.
 - Stage 2 still lacks bounded encrypted local search and the service-worker
   install/update/rollback state machine. Neither is preflighted. Bounded search
   needs an ADR that either changes a persisted format or explicitly defers index
@@ -131,24 +135,18 @@ window imports storage -> window build contains forbidden module: …/src/storag
 
 ## Next safe direction
 
-Finish the Task 0025 review first. If the verdict is PASS, the reviewer closes
-it; if it blocks again, remediate before anything else, because every remaining
-task depends on that build file.
-
-Then Task 0026, which is small and unblocks trustworthy gating, followed by Task
-0023 and then Task 0024 in that order.
+Task 0026 first: it is small and it restores a trustworthy `pnpm test` gate,
+which everything after it depends on. Then Task 0023, then Task 0024.
 
 Suggested prompt for the next agent:
 
 > Resume Neutron from `docs/coordination/HANDOFF.md`. Read every document
 > required by `AGENTS.md`, then verify `git status` is clean at `d94b925` and
-> that the referenced commits exist. First, determine whether Task 0025 has a
-> recorded independent review verdict. If it does not, obtain one from an agent
-> that did not implement it, and remediate every P0 and P1 before starting new
-> work. Do not mark it done yourself. Next, claim Task 0026 and give the
-> Argon2id upper-bounds test real margin without touching ADR 0010 parameters,
-> skipping the test, or adding retry-on-failure; prove it with ten consecutive
-> green full-gate runs. Then claim Task 0023 and implement the ADR 0014
+> that the referenced commits exist. Task 0025 is closed; do not reopen it.
+> First claim Task 0026 and give the provider upper-bounds test real margin
+> without shrinking its 16 MiB inputs, weakening an assertion, skipping it, or
+> adding retry-on-failure; prove it with ten consecutive green full-gate runs
+> and record per-test durations as evidence. Then claim Task 0023 and implement the ADR 0014
 > passphrase generator exactly as specified — digest-pinned wordlist, disjoint
 > big-endian pair sampling with cutoff 62208, no index or word array anywhere,
 > attribution as an exported string rendered in the UI, and the emitted-production

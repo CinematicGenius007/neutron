@@ -53,7 +53,10 @@ function serve(publicFiles) {
       });
       response.end(body);
     } catch {
-      response.writeHead(404, { ...securityHeaders, "Content-Type": "text/plain; charset=utf-8" });
+      response.writeHead(404, {
+        ...securityHeaders,
+        "Content-Type": "text/plain; charset=utf-8",
+      });
       response.end("not found");
     }
   });
@@ -195,6 +198,75 @@ async function rawDatabaseDump(page) {
   });
 }
 
+async function corruptOnlyItemPayload(page) {
+  return page.evaluate(async () => {
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("neutron-vault-v1", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error("database open failed"));
+    });
+    try {
+      const transaction = database.transaction("encrypted-records", "readwrite");
+      const store = transaction.objectStore("encrypted-records");
+      const result = (request) =>
+        new Promise((resolve, reject) => {
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error ?? new Error("database request failed"));
+        });
+      const keys = await result(store.getAllKeys());
+      const payloadKeys = keys.filter((key) => typeof key === "string" && key.startsWith("v1:10:"));
+      if (payloadKeys.length !== 1) throw new Error("expected one item payload");
+      const key = payloadKeys[0];
+      const stored = await result(store.get(key));
+      if (
+        typeof stored !== "object" ||
+        stored === null ||
+        stored.storageVersion !== 1 ||
+        !(stored.envelope instanceof ArrayBuffer)
+      )
+        throw new Error("invalid stored item payload");
+      const originalEnvelope = stored.envelope.slice(0);
+      const envelope = originalEnvelope.slice(0);
+      const bytes = new Uint8Array(envelope);
+      bytes[bytes.length - 1] ^= 1;
+      store.put({ envelope, storageVersion: 1 }, key);
+      await new Promise((resolve, reject) => {
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error ?? new Error("transaction failed"));
+        transaction.onabort = () => reject(transaction.error ?? new Error("transaction aborted"));
+      });
+      const opaqueId = key.split(":")[3];
+      if (!/^[0-9a-f]{32}$/.test(opaqueId)) throw new Error("invalid item identity");
+      return { bytes: [...new Uint8Array(originalEnvelope)], key, opaqueId };
+    } finally {
+      database.close();
+    }
+  });
+}
+
+async function restoreItemPayload(page, snapshot) {
+  await page.evaluate(async ({ bytes, key }) => {
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("neutron-vault-v1", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error("database open failed"));
+    });
+    try {
+      const transaction = database.transaction("encrypted-records", "readwrite");
+      transaction
+        .objectStore("encrypted-records")
+        .put({ envelope: new Uint8Array(bytes).buffer, storageVersion: 1 }, key);
+      await new Promise((resolve, reject) => {
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error ?? new Error("transaction failed"));
+        transaction.onabort = () => reject(transaction.error ?? new Error("transaction aborted"));
+      });
+    } finally {
+      database.close();
+    }
+  }, snapshot);
+}
+
 async function runtimeSurfaceDump(page) {
   return page.evaluate(async () =>
     JSON.stringify({
@@ -326,7 +398,10 @@ try {
     }
     CapturingWorker.prototype = NativeWorker.prototype;
     Object.setPrototypeOf(CapturingWorker, NativeWorker);
-    Object.defineProperty(globalThis, "Worker", { configurable: true, value: CapturingWorker });
+    Object.defineProperty(globalThis, "Worker", {
+      configurable: true,
+      value: CapturingWorker,
+    });
     Object.defineProperty(globalThis, "__neutronCreateCapturedWorker", {
       value() {
         if (approvedWorkerUrl === undefined) throw new Error("worker URL not captured");
@@ -363,22 +438,45 @@ try {
   assert.equal(await page.evaluate(() => globalThis.crossOriginIsolated), true);
   assert.equal(await page.evaluate(() => typeof globalThis.trustedTypes), "object");
   await page.getByRole("heading", { name: "Welcome back" }).waitFor();
+  await page.getByText(/synthetic test data only.*Stage 5 security review/s).waitFor();
+  await page.setViewportSize({ width: 320, height: 640 });
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
+    true,
+  );
 
   const password = "synthetic production password";
   await page.getByRole("button", { name: "Create a local vault" }).click();
+  await page.getByText(/synthetic test data only.*Stage 5 security review/s).waitFor();
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
+    true,
+  );
   await page.locator("#new-password").fill(password);
   await page.locator("#new-password-again").fill(password);
   await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByText(/synthetic test data only.*Stage 5 security review/s).waitFor();
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
+    true,
+  );
   const recoveryKit = await page.getByRole("status", { name: "Recovery kit" }).textContent();
   assert.equal(typeof recoveryKit, "string");
   assert(recoveryKit.startsWith("ntrk1"));
   await page.locator("#recovery-confirmation").fill(recoveryKit);
   await page.getByRole("button", { name: "Confirm and create vault" }).click();
   await page.getByRole("heading", { name: "Your vault" }).waitFor();
+  await page.getByText(/synthetic test data only.*Stage 5 security review/s).waitFor();
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
+    true,
+  );
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   const originalTitle = "Production CRUD fixture";
   const username = "production-crud-username";
   const tag = "production-crud-tag";
+  const loginNotes = "production-login-notes-sentinel";
   const unsavedDraft = "Production unsaved draft";
   const externalWinnerOne = "Production external winner one";
   const externalWinnerTwo = "Production external winner two";
@@ -389,6 +487,7 @@ try {
     originalTitle,
     username,
     tag,
+    loginNotes,
     unsavedDraft,
     externalWinnerOne,
     externalWinnerTwo,
@@ -406,17 +505,37 @@ try {
   await createForm.getByLabel("Title").fill(originalTitle);
   await createForm.getByLabel("Tags, one per line").fill(tag);
   await createForm.getByLabel("Username").fill(username);
+  await createForm.getByLabel("Store a notes field").check();
+  await createForm.getByLabel("Notes", { exact: true }).fill(loginNotes);
   await activateWithKeyboard(page, createForm.getByRole("button", { name: "Generate password" }));
   await page.waitForFunction(() => document.querySelector("#item-password")?.value.length === 20);
+  assert.equal(
+    await createForm.getByLabel("Password", { exact: true }).getAttribute("type"),
+    "password",
+  );
   const generatedPassword = await createForm.getByLabel("Password", { exact: true }).inputValue();
   assert.equal(generatedPassword.length, 20);
   assert.match(generatedPassword, /^[A-Za-z0-9!@#$%^&*()\-_=+[\]{};:,.?]+$/);
   sentinels.push(generatedPassword);
+  await activateWithKeyboard(page, createForm.getByRole("button", { name: "Show password" }));
+  assert.equal(
+    await createForm.getByLabel("Password", { exact: true }).getAttribute("type"),
+    "text",
+  );
+  await activateWithKeyboard(page, createForm.getByRole("button", { name: "Hide password" }));
   await createForm.getByLabel("Random-word passphrase").check();
   assert.equal(await createForm.getByLabel("Words").inputValue(), "8");
   assert.equal((await createForm.textContent()).includes(attribution), true);
+  await page.setViewportSize({ width: 320, height: 640 });
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
+    true,
+  );
+  await page.setViewportSize({ width: 1280, height: 720 });
   await activateWithKeyboard(page, createForm.getByRole("button", { name: "Generate passphrase" }));
-  await page.waitForFunction(() => document.querySelector("#item-password")?.value.includes("."));
+  await page
+    .getByText("Passphrase generated and placed in the masked password field.", { exact: true })
+    .waitFor({ state: "attached" });
   const generatedPassphrase = await createForm.getByLabel("Password", { exact: true }).inputValue();
   const generatedWords = generatedPassphrase.split(".");
   assert.equal(generatedWords.length, 8);
@@ -426,10 +545,39 @@ try {
   await activateWithKeyboard(page, createForm.getByRole("button", { name: "Create item" }));
   await page.getByRole("heading", { name: originalTitle }).waitFor();
   await page.getByText(/Revision 1 · key version 1/).waitFor();
+  assert.equal(
+    await page
+      .getByRole("button", { name: new RegExp(originalTitle) })
+      .getAttribute("aria-current"),
+    "true",
+  );
+  assert.equal((await page.locator("body").textContent()).includes(generatedPassphrase), false);
+  await page.setViewportSize({ width: 320, height: 640 });
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
+    true,
+  );
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Show password" }));
+  assert.equal((await page.locator("body").textContent()).includes(generatedPassphrase), true);
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
+    true,
+  );
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Hide password" }));
+  assert.equal((await page.locator("body").textContent()).includes(generatedPassphrase), false);
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Show notes" }));
+  assert.equal((await page.locator("body").textContent()).includes(loginNotes), true);
+  await page.setViewportSize({ width: 1280, height: 720 });
   assertNoSentinels(await rawDatabaseDump(page), sentinels, "post-save encrypted IndexedDB");
 
   await activateWithKeyboard(page, page.getByRole("button", { name: "Edit item" }));
+  assert.equal(await page.locator("#detail-secret-notes").count(), 0);
   const staleUpdateForm = page.getByRole("form", { name: "Edit item" });
+  await activateWithKeyboard(page, staleUpdateForm.getByRole("button", { name: "Show password" }));
+  assert.equal(
+    await staleUpdateForm.getByLabel("Password", { exact: true }).getAttribute("type"),
+    "text",
+  );
   await staleUpdateForm.getByLabel("Title").fill(unsavedDraft);
   const firstExternalRevision = await externalUpdate(
     page,
@@ -441,13 +589,27 @@ try {
   await activateWithKeyboard(page, staleUpdateForm.getByRole("button", { name: "Save changes" }));
   await page.getByText(/Your draft was not saved/).waitFor();
   assert.equal(await staleUpdateForm.getByLabel("Title").inputValue(), unsavedDraft);
+  assert.equal(
+    await staleUpdateForm.getByLabel("Password", { exact: true }).getAttribute("type"),
+    "password",
+  );
   await activateWithKeyboard(page, staleUpdateForm.getByRole("button", { name: "Cancel editing" }));
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Discard draft" }));
+  assert.equal(await page.locator("#detail-secret-password, #detail-secret-notes").count(), 0);
 
   await activateWithKeyboard(page, page.getByRole("button", { name: new RegExp(originalTitle) }));
   await page.getByRole("heading", { name: externalWinnerOne }).waitFor();
   await activateWithKeyboard(page, page.getByRole("button", { name: "Edit item" }));
   await activateWithKeyboard(page, page.getByRole("button", { name: "Delete item" }));
-  const deleteGroup = page.getByRole("group", { name: "Delete this item?" });
+  const deleteGroup = page.getByRole("group", {
+    name: `Delete “${externalWinnerOne}”?`,
+  });
+  await page.setViewportSize({ width: 320, height: 640 });
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
+    true,
+  );
+  await page.setViewportSize({ width: 1280, height: 720 });
   const secondExternalRevision = await externalUpdate(
     page,
     password,
@@ -471,6 +633,7 @@ try {
   await activateWithKeyboard(page, successfulEdit.getByRole("button", { name: "Save changes" }));
   await page.getByRole("heading", { name: savedTitle }).waitFor();
   await page.getByText(/Revision 4 · key version 1/).waitFor();
+  assert.equal(await page.locator("#detail-secret-password, #detail-secret-notes").count(), 0);
 
   assertNoSentinels(await rawDatabaseDump(page), sentinels, "live IndexedDB");
 
@@ -485,19 +648,119 @@ try {
   assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "post-delete runtime");
 
   await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
+  const validationForm = page.getByRole("form", { name: "Create item" });
+  await activateWithKeyboard(page, validationForm.getByRole("button", { name: "Create item" }));
+  const firstValidationId = await page.locator(".editor-error").getAttribute("id");
+  assert.equal(
+    await page.locator(".editor-error").evaluate((node) => node === document.activeElement),
+    true,
+  );
+  await activateWithKeyboard(page, validationForm.getByRole("button", { name: "Create item" }));
+  const secondValidationId = await page.locator(".editor-error").getAttribute("id");
+  assert.notEqual(secondValidationId, firstValidationId);
+  assert.equal(
+    await page.locator(".editor-error").evaluate((node) => node === document.activeElement),
+    true,
+  );
+  await activateWithKeyboard(page, validationForm.getByRole("button", { name: "Cancel editing" }));
+
+  const noteTitle = "Production secure note fixture";
+  const noteBody = "production-secure-note-body-sentinel";
+  sentinels.push(noteTitle, noteBody);
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
+  const noteForm = page.getByRole("form", { name: "Create item" });
+  await noteForm.getByLabel("Type").selectOption("secure-note");
+  await noteForm.getByLabel("Title").fill(noteTitle);
+  await noteForm.getByLabel("Note").fill(noteBody);
+  await activateWithKeyboard(page, noteForm.getByRole("button", { name: "Create item" }));
+  await page.getByRole("heading", { name: noteTitle }).waitFor();
+  assert.equal((await page.locator("body").textContent()).includes(noteBody), false);
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Show secure note" }));
+  assert.equal((await page.locator("body").textContent()).includes(noteBody), true);
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Edit item" }));
+  assert.equal(await page.locator("#detail-secret-body").count(), 0);
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Delete item" }));
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Confirm delete" }));
+  await page.getByText("No items on this page.").waitFor();
+  assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "secure-note deleted runtime");
+
+  const backupTitle = "Production backup fixture";
+  const backupCode = "production-backup-code-sentinel";
+  const backupNotes = "production-backup-notes-sentinel";
+  sentinels.push(backupTitle, backupCode, backupNotes);
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
+  const backupForm = page.getByRole("form", { name: "Create item" });
+  await backupForm.getByLabel("Type").selectOption("backup-code");
+  await backupForm.getByLabel("Title").fill(backupTitle);
+  await backupForm.getByLabel("Codes, one per line").fill(backupCode);
+  await backupForm.getByLabel("Store a notes field").check();
+  await backupForm.getByLabel("Notes", { exact: true }).fill(backupNotes);
+  await activateWithKeyboard(page, backupForm.getByRole("button", { name: "Create item" }));
+  await page.getByRole("heading", { name: backupTitle }).waitFor();
+  assert.equal((await page.locator("body").textContent()).includes(backupCode), false);
+  await page.setViewportSize({ width: 320, height: 640 });
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Show backup codes" }));
+  assert.equal((await page.locator("body").textContent()).includes(backupCode), true);
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
+    true,
+  );
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Hide backup codes" }));
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Show notes" }));
+  assert.equal((await page.locator("body").textContent()).includes(backupNotes), true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Edit item" }));
+  assert.equal(await page.locator("#detail-secret-notes").count(), 0);
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Delete item" }));
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Confirm delete" }));
+  await page.getByText("No items on this page.").waitFor();
+  assertNoSentinels(await rawDatabaseDump(page), sentinels, "backup deleted IndexedDB");
+  assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "backup deleted runtime");
+
+  const jsonTitle = "Production JSON fixture";
+  const jsonSecret = "production-json-value-sentinel";
+  sentinels.push(jsonTitle, jsonSecret);
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
+  const jsonForm = page.getByRole("form", { name: "Create item" });
+  await jsonForm.getByLabel("Type").selectOption("json");
+  await jsonForm.getByLabel("Title").fill(jsonTitle);
+  await jsonForm.getByLabel("JSON value").fill(JSON.stringify({ secret: jsonSecret }));
+  await activateWithKeyboard(page, jsonForm.getByRole("button", { name: "Create item" }));
+  await page.getByRole("heading", { name: jsonTitle }).waitFor();
+  assert.equal((await page.locator("body").textContent()).includes(jsonSecret), false);
+  await page.setViewportSize({ width: 320, height: 640 });
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Show json value" }));
+  assert.equal((await page.locator("body").textContent()).includes(jsonSecret), true);
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
+    true,
+  );
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Hide json value" }));
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Edit item" }));
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Delete item" }));
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Confirm delete" }));
+  await page.getByText("No items on this page.").waitFor();
+  assertNoSentinels(await rawDatabaseDump(page), sentinels, "JSON deleted IndexedDB");
+  assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "JSON deleted runtime");
+
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
   const cancelledForm = page.getByRole("form", { name: "Create item" });
   await cancelledForm.getByLabel("Random-word passphrase").check();
   await activateWithKeyboard(
     page,
     cancelledForm.getByRole("button", { name: "Generate passphrase" }),
   );
-  await page.waitForFunction(() => document.querySelector("#item-password")?.value.includes("."));
+  await page
+    .getByText("Passphrase generated and placed in the masked password field.", { exact: true })
+    .waitFor({ state: "attached" });
   const cancelledGeneratedPassphrase = await cancelledForm
     .getByLabel("Password", { exact: true })
     .inputValue();
   assert.equal(cancelledGeneratedPassphrase.split(".").length, 8);
   sentinels.push(cancelledGeneratedPassphrase);
   await activateWithKeyboard(page, cancelledForm.getByRole("button", { name: "Cancel editing" }));
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Discard draft" }));
   assertNoSentinels(await rawDatabaseDump(page), sentinels, "cancelled-generation IndexedDB");
   assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "cancelled-generation runtime");
 
@@ -505,7 +768,9 @@ try {
   const lockForm = page.getByRole("form", { name: "Create item" });
   await lockForm.getByLabel("Random-word passphrase").check();
   await activateWithKeyboard(page, lockForm.getByRole("button", { name: "Generate passphrase" }));
-  await page.waitForFunction(() => document.querySelector("#item-password")?.value.includes("."));
+  await page
+    .getByText("Passphrase generated and placed in the masked password field.", { exact: true })
+    .waitFor({ state: "attached" });
   const lockedGeneratedPassphrase = await lockForm
     .getByLabel("Password", { exact: true })
     .inputValue();
@@ -527,9 +792,52 @@ try {
   assert(freshWorker !== undefined, "fresh unlock worker is absent");
   assert.notEqual(freshWorker, activeWorkerBeforeLock);
 
+  assert.equal(
+    await page
+      .getByRole("heading", { name: "Your vault" })
+      .evaluate((node) => node === document.activeElement),
+    true,
+  );
+  await page.keyboard.press("Tab");
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Lock now" })
+      .evaluate((node) => node === document.activeElement),
+    true,
+  );
+  await page.keyboard.press("Tab");
+  const keyboardCreate = page.getByRole("button", { name: "Create item" });
+  assert.equal(await keyboardCreate.evaluate((node) => node === document.activeElement), true);
+  assert.notEqual(
+    await keyboardCreate.evaluate((node) => getComputedStyle(node).outlineStyle),
+    "none",
+  );
+  await page.keyboard.press("Enter");
+  const keyboardEditor = page.getByRole("form", { name: "Create item" });
+  assert.equal(
+    await page
+      .getByRole("heading", { name: "Create an item" })
+      .evaluate((node) => node === document.activeElement),
+    true,
+  );
+  await page.keyboard.press("Tab");
+  assert.equal(
+    await keyboardEditor.getByLabel("Type").evaluate((node) => node === document.activeElement),
+    true,
+  );
+  await page.keyboard.press("Tab");
+  assert.equal(
+    await keyboardEditor.getByLabel("Title").evaluate((node) => node === document.activeElement),
+    true,
+  );
+  await page.keyboard.press("Shift+Tab");
+  assert.equal(
+    await keyboardEditor.getByLabel("Type").evaluate((node) => node === document.activeElement),
+    true,
+  );
+
   const totpTitle = "Production TOTP fixture";
   const totpSeed = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
-  await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
   const totpForm = page.getByRole("form", { name: "Create item" });
   await totpForm.getByLabel("Type").selectOption("totp");
   await totpForm.getByLabel("Title").fill(totpTitle);
@@ -537,7 +845,7 @@ try {
   await totpForm.getByLabel("Digits").selectOption("8");
   await activateWithKeyboard(page, totpForm.getByRole("button", { name: "Create item" }));
   await page.getByRole("heading", { name: totpTitle }).waitFor();
-  const totpOutput = page.locator(".totp-code output");
+  const totpOutput = page.locator(".totp-value");
   await totpOutput.waitFor();
   const totpCode = await totpOutput.textContent();
   const validFromUnixSeconds = await totpOutput.getAttribute("data-valid-from");
@@ -548,6 +856,21 @@ try {
     referenceTotp("12345678901234567890", "sha1", 8, 30, validFromUnixSeconds),
   );
   sentinels.push(totpTitle, totpSeed, totpCode);
+  assert.equal((await page.locator("body").textContent()).includes(totpSeed), false);
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Show totp secret" }));
+  assert.equal((await page.locator("body").textContent()).includes(totpSeed), true);
+  assert.equal(
+    await page
+      .locator('[role="status"], [aria-live]')
+      .evaluateAll(
+        (regions, secrets) =>
+          regions.every((region) =>
+            secrets.every((secret) => !region.textContent?.includes(secret)),
+          ),
+        [totpSeed, totpCode],
+      ),
+    true,
+  );
   assertNoSentinels(await rawDatabaseDump(page), sentinels, "TOTP encrypted IndexedDB");
   assertNoSentinels(await originPersistenceDump(page), sentinels, "TOTP origin persistence");
   await page.setViewportSize({ width: 320, height: 640 });
@@ -556,6 +879,46 @@ try {
     true,
   );
   await page.setViewportSize({ width: 1280, height: 720 });
+
+  const recoverableCorruption = await corruptOnlyItemPayload(page);
+  await page.evaluate(() => globalThis.dispatchEvent(new Event("focus")));
+  await page.getByText(/current TOTP code could not be calculated/i).waitFor();
+  assert.equal((await page.locator("body").textContent()).includes(totpSeed), false);
+  await restoreItemPayload(page, recoverableCorruption);
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Try calculating again" }));
+  await page.locator(".totp-value").waitFor();
+  const finalCorruption = await corruptOnlyItemPayload(page);
+  await page.getByRole("button", { name: "Lock now" }).click();
+  await page.getByRole("heading", { name: "Welcome back" }).waitFor();
+  assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "corrupt-item locked runtime");
+  await waitForNoWorkers(page);
+  await page.locator("#unlock-password").fill(password);
+  await page.getByRole("button", { name: "Unlock vault" }).click();
+  await page.getByText(`Record ${finalCorruption.opaqueId}`).waitFor();
+  await page.setViewportSize({ width: 320, height: 640 });
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
+    true,
+  );
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  for (let index = 0; index < 25; index += 1) {
+    const paginationTitle = `Production pagination ${index.toString().padStart(2, "0")} sentinel`;
+    sentinels.push(paginationTitle);
+    await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
+    const paginationForm = page.getByRole("form", { name: "Create item" });
+    await paginationForm.getByLabel("Title").fill(paginationTitle);
+    await activateWithKeyboard(page, paginationForm.getByRole("button", { name: "Create item" }));
+    await page.getByRole("heading", { name: paginationTitle }).waitFor();
+    await page.getByText("Item saved. Page 1 loaded.", { exact: true }).waitFor();
+  }
+  await page.getByText(/Page 1 · [0-9]+ shown/).waitFor();
+  const productionNext = page.getByRole("button", { name: "Next page" });
+  assert.equal(await productionNext.isEnabled(), true);
+  await activateWithKeyboard(page, productionNext);
+  await page.getByText(/Page 2 · [0-9]+ shown/).waitFor();
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Previous page" }));
+  await page.getByText(/Page 1 · [0-9]+ shown/).waitFor();
 
   await page.getByRole("button", { name: "Lock now" }).click();
   await page.getByRole("heading", { name: "Welcome back" }).waitFor();
@@ -585,7 +948,12 @@ try {
     );
     const body = await response.body();
     assertNoSentinels(
-      { headers, hex: body.toString("hex"), text: body.toString("utf8"), url: response.url() },
+      {
+        headers,
+        hex: body.toString("hex"),
+        text: body.toString("utf8"),
+        url: response.url(),
+      },
       sentinels,
       `${file} response`,
     );
@@ -599,7 +967,10 @@ try {
     function UnsupportedWorker() {
       throw new DOMException("module workers unavailable", "NotSupportedError");
     }
-    Object.defineProperty(globalThis, "Worker", { configurable: true, value: UnsupportedWorker });
+    Object.defineProperty(globalThis, "Worker", {
+      configurable: true,
+      value: UnsupportedWorker,
+    });
   });
   const unsupported = await unsupportedContext.newPage();
   await unsupported.goto(origin);
@@ -607,7 +978,9 @@ try {
   assert.equal(await unsupported.locator('input[type="password"]').count(), 0);
   await unsupportedContext.close();
 
-  const mobileContext = await browser.newContext({ viewport: { width: 320, height: 640 } });
+  const mobileContext = await browser.newContext({
+    viewport: { width: 320, height: 640 },
+  });
   const mobile = await mobileContext.newPage();
   await mobile.goto(origin);
   await mobile.getByRole("heading", { name: "Welcome back" }).waitFor();
@@ -618,6 +991,32 @@ try {
   await mobile.keyboard.press("Tab");
   assert.equal(
     await mobile.locator("#unlock-password").evaluate((node) => node === document.activeElement),
+    true,
+  );
+  await mobile.keyboard.press("Tab");
+  assert.equal(
+    await mobile
+      .getByRole("button", { name: "Unlock vault" })
+      .evaluate((node) => node === document.activeElement),
+    true,
+  );
+  await mobile.keyboard.press("Tab");
+  assert.equal(
+    await mobile
+      .getByRole("button", { name: "Create a local vault" })
+      .evaluate((node) => node === document.activeElement),
+    true,
+  );
+  await mobile.keyboard.press("Enter");
+  await mobile.getByRole("heading", { name: "Choose a master password" }).waitFor();
+  await mobile.keyboard.press("Tab");
+  assert.equal(
+    await mobile.locator("#new-password").evaluate((node) => node === document.activeElement),
+    true,
+  );
+  await mobile.keyboard.press("Tab");
+  assert.equal(
+    await mobile.locator("#new-password-again").evaluate((node) => node === document.activeElement),
     true,
   );
   await mobileContext.close();

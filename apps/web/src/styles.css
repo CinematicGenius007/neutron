@@ -34,10 +34,7 @@ button {
 button:hover {
   background: #91ead7;
 }
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
+:focus-visible {
   outline: 3px solid #b8c7ff;
   outline-offset: 3px;
 }
@@ -67,7 +64,8 @@ textarea {
 select {
   width: 100%;
 }
-input[type="checkbox"] {
+input[type="checkbox"],
+input[type="radio"] {
   width: auto;
   margin: 0;
 }
@@ -115,6 +113,30 @@ h1 {
 .vault-shell > .brand {
   width: 100%;
   margin-bottom: 2rem;
+}
+.safety-notice {
+  width: min(100%, 48rem);
+  border: 1px solid #b78635;
+  border-radius: 0.7rem;
+  background: #2a210e;
+  color: #ffe6ad;
+  padding: 0.8rem 1rem;
+  overflow-wrap: anywhere;
+}
+.vault-shell > .safety-notice {
+  width: 100%;
+  margin-bottom: 1.25rem;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .brand div {
   display: grid;
@@ -191,6 +213,18 @@ h1 {
   justify-content: space-between;
   gap: 1rem;
 }
+.lock-action {
+  display: grid;
+  justify-items: end;
+  gap: 0.4rem;
+  max-width: 18rem;
+  text-align: right;
+}
+.lock-action p {
+  margin: 0;
+  color: #c4cee4;
+  font-size: 0.82rem;
+}
 .vault-grid {
   display: grid;
   grid-template-columns: minmax(16rem, 0.8fr) minmax(0, 1.4fr);
@@ -226,6 +260,10 @@ h1 {
   color: #91a4c7;
   font-weight: 500;
 }
+.item-list li button[aria-current="true"] {
+  box-shadow: inset 4px 0 #70e1c8;
+  background: #203657;
+}
 .empty,
 .empty-detail {
   color: #9cadca;
@@ -251,8 +289,29 @@ h1 {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+.item-detail dd .secret-value {
+  display: block;
+}
+.secret-toggle {
+  margin-top: 0.65rem;
+}
+.secret-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: stretch;
+}
+.secret-input button {
+  white-space: nowrap;
+}
 .item-editor form {
   margin-top: 1.25rem;
+}
+.editor-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 .item-editor .error {
   width: 100%;
@@ -265,6 +324,7 @@ h1 {
 }
 .password-generator .field-hint {
   margin: 0;
+  overflow-wrap: anywhere;
 }
 .totp-code {
   border: 1px solid #405376;
@@ -276,7 +336,7 @@ h1 {
 .totp-code p {
   margin: 0.5rem 0;
 }
-.totp-code output {
+.totp-value {
   display: block;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: clamp(1.75rem, 8vw, 2.5rem);
@@ -305,15 +365,33 @@ h1 {
   margin: 0;
 }
 .delete-start,
-.delete-confirmation {
+.delete-confirmation,
+.discard-confirmation {
   margin-top: 1.5rem;
 }
-.delete-confirmation {
+.delete-confirmation,
+.discard-confirmation {
   border-right: 0;
   border-bottom: 0;
   border-left: 0;
   border-top: 1px solid #273a5d;
   padding-top: 1.25rem;
+}
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+.pagination button {
+  flex: 1 1 8rem;
+}
+.corrupt-records {
+  margin-top: 1rem;
+  overflow-wrap: anywhere;
+}
+.corrupt-records p:last-of-type {
+  margin-bottom: 0.75rem;
 }
 
 @media (max-width: 760px) {
@@ -333,6 +411,15 @@ h1 {
   }
   .section-heading {
     align-items: flex-start;
+  }
+  .vault-toolbar {
+    align-items: flex-start;
+  }
+  .lock-action {
+    max-width: 11rem;
+  }
+  .secret-input {
+    grid-template-columns: 1fr;
   }
   .editor-actions button {
     flex-basis: 100%;

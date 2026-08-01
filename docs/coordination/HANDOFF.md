@@ -2,7 +2,9 @@
 
 Updated: 2026-08-01
 Branch: `main`
-Last executable checkpoint: Task 0023, independently closed at `97b60af`
+Last committed checkpoint before this task: `605b196`
+Current checkpoint: Task 0024 complete and independently approved; implementation
+and closure commit(s) are recorded by `git log` immediately above `605b196`.
 
 This is a navigation checkpoint, not a substitute for authoritative task files
 or accepted ADRs. Verify it against the repository before acting.
@@ -11,77 +13,55 @@ or accepted ADRs. Verify it against the repository before acting.
 
 1. Read `AGENTS.md` and every document it requires, in order. `CLAUDE.md` is
    practical guidance only and cannot override repository instructions.
-2. Run `git status --short` and `git log -10 --oneline`. Expect clean `main` with
-   this handoff commit above `97b60af`, `286782d`, `52de9e5`, and `c7fa704`.
-3. Read accepted ADR 0015 together with superseded ADR 0014, then Tasks 0023 and
-   0024. Task 0023 is `done`; Task 0024 is the only proposed Stage 2 task whose
-   dependencies are all done.
-4. No implementation task is active. Do not claim Task 0024 until an independent
-   read-only preflight confirms its 14 findings against current line locations,
-   allowed paths, testability, and readiness, then records any corrections and
-   moves it from `proposed` to `ready`.
-5. Update this file before the next session stops, including if work is blocked
-   or under review.
+2. Run `git status --short` and `git log -12 --oneline`. Expect clean `main` once
+   the Task 0024 closure commit is present.
+3. Read Task 0024 and its initial BLOCK plus remediation PASS review record.
+4. Do not use real credentials. The UI persistently states that Stage 5 has not
+   passed and accepts synthetic test data only.
+5. Claim no new task until its dependencies, allowed paths, ADR requirements,
+   and overlap are independently preflighted.
 
-## Task 0023 — completed passphrase generator
+## Task 0024 — completed functional UI remediation
 
-Task 0023 is done and independently reviewed.
+Task 0024 is done and independently reviewed by
+`/root/task_0024_adversarial_review`.
 
-- Implementation: `52de9e5 feat(vault): add worker passphrase generator`.
-- Review assignment: `0c98408 docs(coordination): assign TASK-0023 review`.
-- Review remediation: `286782d test(vault): close passphrase review precision gaps`.
-- Closure: `97b60af docs(coordination): close TASK-0023 review`.
-- Implementer: `/root`; reviewer: `/root/task_0023_review`.
-- Initial review: PASS, P0 0 / P1 0 / P2 3.
-- Final remediation review: PASS, P0 0 / P1 0 / P2 0.
+- Initial review: BLOCK, P0 0 / P1 5 / P2 0.
+- Remediation review: PASS, P0 0 / P1 0 / P2 0.
+- Product paths stayed limited to `app.tsx`, `item-editor.tsx`, and
+  `styles.css`; browser and production tests plus this coordination record were
+  the only other changed paths.
+- No dependency, persistence, URL, protocol, worker, crypto, network, server,
+  or third-party runtime-content change was made.
 
-The unlocked login editor now has two modes. Random-character password remains
-the default. Random-word passphrase defaults to eight independently selected EFF
-long-list words separated by `.`. Generation is unlocked-only, occurs inside the
-existing vault worker through its reviewed CSPRNG provider, fills only the active
-keyed login draft, and never saves without explicit user action.
+The shipped local UI now:
 
-The committed wordlist is a frozen 7,776-entry literal. Fresh TLS retrieval and
-independent review reproduced:
+- keeps login passwords/notes, secure-note bodies, TOTP seeds, backup codes/
+  notes, and JSON values absent from the DOM until an explicit per-field reveal;
+- clears reveal state on item/revision changes, editor entry, errors, cancel,
+  delete, and lock, while keeping TOTP codes out of live regions;
+- masks editor passwords with redacted Show/Hide and generation statuses;
+- guards dirty create/item/type/cancel navigation without ever delaying lock;
+- disables the submitted draft during pending saves and prevents post-submit
+  edits from being silently lost;
+- provides in-memory Previous/Next pagination with distinct loading, unavailable,
+  retry, and verified-empty states;
+- recovers cleanly from a failed recovery-kit confirmation;
+- identifies current selection and corrupt opaque record IDs, provides honest
+  retry/lock guidance, names deletion targets, retries TOTP calculation, and
+  repeats specific field-level validation feedback;
+- shows a persistent synthetic-data/Stage-5 warning on every supported data
+  entry screen; and
+- retains visible keyboard focus and 320-pixel reflow across the tested screens.
 
-```text
-upstream bytes       108,800
-upstream lines       7,776
-upstream SHA-256     addd35536511597a02fa0a9ff1e5284677b8883b83e986e43f15a3db996b903e
-canonical bytes      62,143
-canonical SHA-256    abae49761b88f3f1ba31ef944bea1f61b795a3cd7e1cfb7d276ed45bf77967ba
-first / last         abacus / zoom
-```
-
-Selection uses disjoint big-endian 16-bit pairs, cutoff 62,208, exact
-`words * 32` maximum random bytes, positive even chunks no larger than 256, and
-best-effort clearing in `finally`. Source review confirmed the selection path
-retains only the output prefix and one current numeric index, overwritten before
-the next draw; it creates no selected-index or selected-word collection.
-
-Validation remains four separate layers: exact request parsing, standalone
-global response/list-membership parsing, worker-local result validation, and an
-immutable request-specific broker expectation. Lock/session epoch priority,
-manual-edit/newer-request/type/target/cancel/lock invalidation, and no-auto-save
-behavior have adversarial coverage.
-
-The exact-CSP production gate extracts exactly one minified frozen wordlist from
-the emitted worker, recomputes the literal canonical digest, validates a real
-worker result against that extracted list, proves the complete EFF/CC notice is
-emitted and rendered, and applies plaintext-sentinel checks before save, after
-encrypted save, delete, cancel, lock, fresh unlock, network, console, origin
-storage, runtime DOM, and static artifacts. The notice in
-`docs/third-party-notices.md` now accurately names governing ADR 0015.
-
-The first independent review's three P2s were all remediated: invariant tests now
-use the exact interior-hyphen grammar plus separate 3–9 length checks; negative
-word count and pending-enrollment passphrase rejection are explicit; and stale
-notice wording is corrected. No P0 or P1 was found.
+The most important review catches were not cosmetic: a dirty editor survived a
+failed item read after parent state had been cleared, controls stayed editable
+during save, failed forward pagination could present stale empty content, and a
+TOTP code was itself live-announced. All have direct adversarial regressions.
 
 ## Verification actually run
 
-The final implementation and post-review remediation both ran the required gate
-set without retry. The post-remediation results were:
+Final implementation/remediation evidence:
 
 ```text
 pnpm install --frozen-lockfile               pass; already up to date
@@ -90,84 +70,63 @@ pnpm lint                                    pass; 109 files
 pnpm format:check                            pass; 109 files
 pnpm test                                    pass; 12 files, 102 tests
 pnpm build                                   pass
-pnpm --filter @neutron/web test:browser      pass; 7 files, 27 tests
-pnpm --filter @neutron/web test:production   pass; exact-CSP Chromium flow
+pnpm --filter @neutron/web test:browser      pass; 7 files, 35 tests
+pnpm --filter @neutron/web test:production   pass twice consecutively after final wait fix
 git diff --check                             pass
 ```
 
-Independent review separately reran targeted tests, typecheck, lint, formatting,
-the full unit gate, build, browser tests, production flow, diff check, and a
-fresh upstream/digest probe.
+The exact-CSP production flow uses the real built worker and encrypted
+IndexedDB. It covers every classified secret field, redacted TOTP failure and
+retry after authenticated-record corruption/restore, repeated validation,
+current selection, keyboard traversal, forward/back pagination over 25 real
+encrypted items, named deletion, and the complete 320-pixel screen matrix. It
+sentinel-scans storage, runtime DOM/form values, network requests, console,
+origin state, and static emitted artifacts after required resets.
 
-Bundle measurements:
+Recorded final emitted sizes:
 
-| Emitted asset | Before Task 0023 | After Task 0023 | Delta |
+| Emitted asset | Task 0023 checkpoint | Task 0024 final | Delta |
 |---|---:|---:|---:|
-| Window JavaScript | 237,586 B | 303,516 B | +65,930 B |
-| Vault worker JavaScript | 596,854 B | 661,361 B | +64,507 B |
-| CSS | 4,759 B | 4,759 B | 0 B |
+| Window JavaScript | 303,516 B | 314,769 B | +11,253 B |
+| Vault worker JavaScript | 661,361 B | 661,361 B | 0 B |
+| CSS | 4,759 B | 5,922 B | +1,163 B |
 
-Duplication into the window and worker is intentional: both sides independently
-validate list membership. No persistence format, protocol version, provider,
-crypto package, dependency, server, or network format changed.
+Every production retry is recorded with its exact cause in Task 0024. The final
+test-only issue was an ambiguous `includes(".")` passphrase wait; all three waits
+now require the exact redacted success status to be attached before the value is
+read and independently validated.
 
 ## Deliberately unfinished
 
-- Task 0024, functional UI remediation, remains `proposed`. Its dependencies are
-  now done, but its recorded line references predate Task 0023 and require a
-  fresh independent preflight before readiness or claim.
-- Task 0024 owns 14 enumerated interaction/accessibility issues, including
-  secret reveal/masking lifecycle, draft-loss warnings, focus/live-region
-  behavior, pagination return, actionable error states, and untested 320-pixel
-  surfaces. It is functional remediation only: no visual redesign or dependency.
-- Stage 2 still lacks bounded encrypted local search and the service-worker
-  install/update/rollback state machine. Neither is preflighted. Search requires
-  an ADR for index-shard leakage and persisted-format policy.
-- Idle auto-lock and clipboard copy remain ADR-worthy security decisions, not UI
-  tweaks. QR handling, `otpauth://` import, adjacent-step TOTP validation, and
-  clock synchronization remain absent.
 - Tasks 0004, 0006, 0008, and 0009 remain blocked; Task 0010 remains proposed.
-- There is no deployment, connected CI evidence, dogfood approval, or production
-  release. Do not use real credentials before the Stage 5 gate.
+- Stage 2 still lacks bounded encrypted local search and a service-worker
+  install/update/rollback state machine. Search requires an ADR for index-shard
+  leakage and persisted-format policy.
+- Idle auto-lock and clipboard copy remain ADR-worthy security decisions.
+- QR handling, `otpauth://` import, adjacent-step TOTP validation, clock
+  synchronization, deployment, connected CI evidence, dogfood approval, and a
+  production release remain absent.
+- Do not treat Task 0024 completion as Stage 5 approval.
 
 ## Next safe direction
 
-Preflight Task 0024 only. Reproduce or correct each D1–D14 finding against the
-current Task 0023 UI, verify the six allowed product/test paths are sufficient,
-and identify any policy conflict before moving the task to `ready`. Pay special
-attention to D4: reveal controls create new plaintext DOM surfaces and must clear
-on item change, editor open, error, cancel, delete, and lock without narrowing
-the worker's `get-item` protocol. Lock priority may never wait for confirmation.
-
-Suggested prompt for the next agent:
-
-> Resume Neutron from `docs/coordination/HANDOFF.md`. Read every document required
-> by `AGENTS.md`; verify clean `main` and the checkpoint commits. Independently
-> preflight proposed Task 0024 against the current Task 0023 UI before changing
-> status or claiming it: reproduce/correct D1–D14, refresh stale line references,
-> prove allowed paths and tests are sufficient, and stop for an ADR if any fix
-> changes plaintext exposure policy beyond the task's accepted constraints. If
-> ready, claim only Task 0024 and implement functional remediation without a
-> visual redesign, dependency, persistence, URL, log, network, worker, protocol,
-> or crypto change. Preserve lock priority and every Task 0017–0023 behavior; add
-> keyboard, live-region, stale-result, secret-clearing, and 320-pixel real-browser
-> proofs; run all root/browser/production gates; obtain independent adversarial
-> review; remediate findings; close the task only on reviewer PASS; and update
-> this handoff. Do not start search, service worker, recovery, clipboard, idle
-> auto-lock, sync, server, deployment, or styling work.
+Run a fresh plan/readiness review before choosing more Stage 2 scope. The likely
+next candidates are the bounded encrypted-search ADR/task or the service-worker
+delivery state machine; neither is authorized by Task 0024 and neither should
+start without a separate preflight. If the goal is release rather than more
+features, audit the remaining Stage 5 gates instead of expanding the UI.
 
 ## Manual UI smoke test
 
 Run `pnpm --filter @neutron/web dev` from the repository root and use a fresh
 browser profile/origin with synthetic data only. Enrollment, recovery-kit
-confirmation, lock/unlock, item CRUD, random-character password generation,
-EFF passphrase generation, and TOTP display are available. This is not a dogfood
-or production security release.
+confirmation, lock/unlock, all five item types, CRUD, password/passphrase
+generation, secret reveal, pagination, and TOTP display are available. This is
+not a dogfood or production-security release.
 
 ## Mandatory next-session stop protocol
 
-Before the next session ends, record repository-verifiable task/review status,
-exact commits, dirty paths, commands actually run and results, unresolved
-findings, next safe action, and explicit non-goals here. Prefer a clean committed
-checkpoint. Never use the handoff to self-approve security-sensitive work, and
-retain implementer/reviewer identities in the task record.
+Before the next session ends, update this file with repository-verifiable task
+status, exact commits, dirty paths, commands actually run, unresolved findings,
+next safe action, and explicit non-goals. Prefer a clean committed checkpoint.
+Never use a handoff to self-approve security-sensitive work.

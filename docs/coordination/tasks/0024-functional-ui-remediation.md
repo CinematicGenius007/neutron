@@ -1,11 +1,11 @@
 # TASK 0024 — Functional UI remediation
 
-Status: ready
+Status: done
 Owner: unassigned
-Claimed: —
-Worktree/branch: —
-Reviewer: unassigned
-Review claimed: —
+Claimed: 2026-08-01T02:32:01Z
+Worktree/branch: shared-worktree (main)
+Reviewer: `/root/task_0024_adversarial_review`
+Review claimed: 2026-08-01T03:13:41Z
 Depends on: 0019, 0020, 0021, 0022, 0023
 Blocks: Stage 2 completeness review
 Security-sensitive: yes
@@ -55,9 +55,9 @@ and ADR 0013 explicitly left the display half of that question unowned.
 
 ## Acceptance criteria
 
-- [ ] Every enumerated functional defect in the "Findings" section below is
+- [x] Every enumerated functional defect in the "Findings" section below is
       either fixed or explicitly recorded as deferred with a reason.
-- [ ] Decrypted detail fields classified as secret are absent from the rendered
+- [x] Decrypted detail fields classified as secret are absent from the rendered
       DOM on arrival: login password and notes; secure-note body; TOTP
       `secretBase32`; backup codes and notes; and JSON value. Username, URL,
       tags, TOTP algorithm/digits/period/issuer/account name may remain visible
@@ -67,40 +67,40 @@ and ADR 0013 explicitly left the display half of that question unowned.
       revision change, editor open, generic or TOTP error, cancel, delete, and
       lock. The editor login password starts masked and has the same explicit
       announced Show/Hide behavior.
-- [ ] No change adds persistence, a URL parameter, a log line, or a network
+- [x] No change adds persistence, a URL parameter, a log line, or a network
       request carrying plaintext. The only new plaintext DOM surfaces are the
       explicit active per-field reveal, the already-authorized editor input,
       and the named delete confirmation; every other DOM/status/navigation
       surface stays redacted. Production proves a secret is present only during
       reveal and absent after every required reset with the sentinel mechanism.
-- [ ] Every interactive control has an accessible name. Redacted targeted
+- [x] Every interactive control has an accessible name. Redacted targeted
       statuses announce item/page loading, successful generation into the
       masked field, save/delete completion, and TOTP calculation/retry without
       placing a secret or title in status text. Repeating the same validation
       error is announced again. Every recoverable error offers an explicit way
       forward; initial/in-flight/failed list loads never claim an empty page.
-- [ ] The unlocked vault, item detail, and item editor are fully operable by
+- [x] The unlocked vault, item detail, and item editor are fully operable by
       keyboard alone, with a visible focus indicator and no focus trap, verified
       by real-browser tests.
-- [ ] No horizontal document overflow at 320 pixels on any screen, including the
+- [x] No horizontal document overflow at 320 pixels on any screen, including the
       editor, the detail view, and the generator controls, verified by test.
-- [ ] Destructive and irreversible actions state their consequence before they
+- [x] Destructive and irreversible actions state their consequence before they
       are taken and are not the default focus target.
-- [ ] Create, item selection, pagination, type change, and cancel never silently
+- [x] Create, item selection, pagination, type change, and cancel never silently
       erase a dirty draft. They either preserve it or require an inline,
       keyboard-operable, redacted discard decision. Lock remains immediate and
       unconfirmed, with an advance warning that it discards unsaved changes.
-- [ ] One persistent warning across every supported application screen—locked,
+- [x] One persistent warning across every supported application screen—locked,
       enrollment, recovery confirmation, and unlocked—states that this is a
       development build, accepts synthetic test data only, and has not passed
       the Stage 5 security review. Browser-check and unsupported screens may be
       excluded. No data-entry screen presents Neutron as ready for real
       credentials.
-- [ ] Existing secure behavior covered by Tasks 0017 through 0023 keeps passing;
+- [x] Existing secure behavior covered by Tasks 0017 through 0023 keeps passing;
       no assertion is weakened or deleted merely to accommodate a UI change.
       Tests that currently require a recorded defect, especially silent draft
       destruction, are strengthened to require the remediated behavior.
-- [ ] All repository gates and an independent adversarial review pass.
+- [x] All repository gates and an independent adversarial review pass.
 
 ## Findings
 
@@ -282,12 +282,91 @@ duplicate backup-code cases must assert specific redacted correction text.
   P1 0, P2 0 after two correction rounds. All dependencies are done, no path
   overlap exists, allowed paths and tests are sufficient, and no ADR blocker
   remains. Moved to ready, unclaimed.
+- 2026-08-01T02:32:01Z — Orchestrator confirmed no active/review task overlap
+  and granted `/root` the claim on the exact allowed paths.
+- 2026-08-01T02:56:34Z — Implementation completed and moved to independent
+  review. Remediated D1–D18 without a dependency, persistence, protocol,
+  worker, crypto, network, or visual-redesign change. A focused retry test
+  caught and fixed a TOTP-error remount loop before review. Required gates
+  passed without retry on the final implementation: frozen install; typecheck;
+  lint; format check; 12 unit files with 102 tests; build; browser suites with
+  7 files and 31 tests; exact-CSP production flow; and diff check. Production
+  verifies keyboard traversal, the persistent Stage 5 warning, secret
+  reveal/hide/reset, passphrase/login/backup-code/JSON/TOTP and long corrupt-ID
+  states at 320 pixels, encrypted persistence, and post-delete/cancel/lock
+  sentinel absence. Final emitted sizes are 314,396-byte window JavaScript,
+  661,361-byte worker JavaScript, and 5,873-byte CSS versus Task 0023's
+  303,516 / 661,361 / 4,759-byte checkpoint. Independent review remains open.
+- 2026-08-01T02:59:49Z — Independent review returned BLOCK with P0 0, P1 4:
+  explicitly discarded item navigation left the dirty editor mounted across a
+  failed read; save left draft controls editable while the submitted snapshot
+  was in flight; failed forward pagination could continue presenting the old
+  page as empty; and the TOTP code used live-region semantics. Returned to
+  active for remediation. The reviewer also required a complete per-secret
+  reveal/reset matrix rather than representative-only coverage.
+- 2026-08-01T03:13:41Z — Remediated every review finding and returned to the
+  same independent reviewer. Item navigation now unmounts an explicitly
+  discarded editor before a read; a disabled fieldset freezes the submitted
+  draft; page transitions replace old content with loading/unavailable state
+  and retain the attempted in-memory cursor for retry; and TOTP codes use a
+  non-live span with a separate redacted readiness status. Added direct delayed
+  navigation/save/page-failure tests and a complete browser secret-field/reset
+  matrix. Production now reveals every classified field, forces and repairs a
+  real authenticated TOTP failure before retry, covers error/cancel/revision/
+  delete/lock resets, repeated validation, current-item semantics, and creates
+  25 real encrypted records for forward/back pagination. Full gates passed:
+  frozen install; typecheck; lint; format check; 12 unit files with 102 tests;
+  build; browser suites with 7 files and 35 tests; and diff check. The first
+  production attempt in the combined gate reached the next pagination loop
+  before the preceding save's list refresh enabled Create; added an explicit
+  redacted completion wait, then the exact-CSP production gate passed on the
+  targeted rerun. Final assets are 314,769-byte window JavaScript,
+  661,361-byte worker JavaScript, and 5,922-byte CSS.
+- 2026-08-01T03:21:31Z — Independent remediation review passed with P0 0,
+  P1 0, P2 0 after two test-only production findings were corrected. The first
+  reviewer production run saw a 3-word value where 8 were required because the
+  wait accepted any `.` even though `.` is legal in random passwords. The first
+  correction then timed out because it searched for the visually-hidden
+  redacted success status inside the form, while that status is its sibling.
+  All three waits now require the exact page-scoped redacted passphrase-success
+  status to be attached before reading and independently validating the field.
+  Production passed twice consecutively after that correction. The reviewer
+  also reran typecheck, lint, format check, diff check, and browser suites (7
+  files / 35 tests), confirmed all five P1s closed, and approved closure.
 
 ## Handoff
 
-Summarize changed behavior, important files, decisions, risks, and follow-up work.
+The vault now defaults decrypted secret detail fields to absent-from-DOM,
+provides per-field redacted reveal state, masks editor passwords, guards dirty
+navigation without delaying lock, returns through in-memory pagination, and has
+specific recoverable load, validation, TOTP, enrollment, and corrupt-record
+states. `app.tsx` owns screen/navigation/privacy behavior; `item-editor.tsx`
+owns draft/generator/validation behavior; `styles.css` adds only functional
+focus, selection, reflow, and warning presentation. Browser tests use synthetic
+brokers for hostile state transitions; the production script verifies emitted
+assets and the real worker/storage boundary. Search, clipboard, idle lock,
+service-worker delivery, deployment, and every server/protocol change remain
+out of scope.
 
 ## Review
 
-Reviewer, date, findings, and disposition. Required; the implementer must not
-self-approve.
+Reviewer: `/root/task_0024_adversarial_review`.
+
+Initial review, 2026-08-01: BLOCK with P0 0, P1 5, P2 0. Four implementation
+defects were reproduced: a dirty-navigation failure race, editable controls
+during save, stale empty content during failed page transitions, and live TOTP
+code semantics. The fifth P1 was incomplete secret/reset and transition
+verification despite checked criteria.
+
+Remediation review, 2026-08-01: PASS with P0 0, P1 0, P2 0. Source and targeted
+race inspection confirmed the discarded editor unmounts before reads, the
+submitted form is disabled, attempted cursor state survives failed pagination,
+stale page content clears on transition and retry, and the TOTP value has no
+live semantics. Browser coverage now exercises all secret fields and required
+reset/race paths. The emitted exact-CSP flow covers all classified fields,
+redacted TOTP failure/retry, repeated validation, current selection, forward/
+back pagination over real encrypted items, complete 320-pixel states, and
+sentinel absence after delete, cancel, and lock. After correcting and recording
+the two test-only passphrase-wait defects above, production passed twice
+consecutively and all remaining gates passed. Final disposition: approved and
+closed.

@@ -52,6 +52,7 @@ type Screen = "locked" | "enroll" | "confirm-recovery" | "unlocked";
 type EditorTarget =
   | Readonly<{ identity: number; kind: "create" }>
   | Readonly<{ base: VaultWorkerItemRecord; kind: "edit" }>;
+type NavigationIntent = Readonly<{ kind: "create" }> | Readonly<{ id: string; kind: "item" }>;
 
 const genericErrors: Readonly<Record<string, string>> = Object.freeze({
   "already-initialized": "A vault already exists in this browser.",
@@ -79,15 +80,21 @@ function safeMessage(error: unknown): string {
 
 function TotpCodeDisplay({
   onCompute,
+  onError,
 }: Readonly<{
   onCompute: () => Promise<VaultWorkerTotpCode>;
+  onError: () => void;
 }>) {
   const compute = useRef(onCompute);
   compute.current = onCompute;
+  const privacyReset = useRef(onError);
+  privacyReset.current = onError;
   const [code, setCode] = useState<VaultWorkerTotpCode>();
   const [codeError, setCodeError] = useState<string>();
+  const [retryEpoch, setRetryEpoch] = useState(0);
 
   useEffect(() => {
+    void retryEpoch;
     const freshnessWatchdogMilliseconds = 1_000;
     let active = true;
     let expiryRetries = 0;
@@ -130,6 +137,7 @@ function TotpCodeDisplay({
             expiryRetries += 1;
             retryExpired = true;
           } else {
+            privacyReset.current();
             setCodeError("The current TOTP code could not be calculated.");
           }
           return;
@@ -149,6 +157,7 @@ function TotpCodeDisplay({
           return;
         }
         const value = safeMessage(cause);
+        privacyReset.current();
         setCodeError(
           value === genericErrors.conflict
             ? "This TOTP item changed. Reopen it to calculate a current code."
@@ -179,37 +188,117 @@ function TotpCodeDisplay({
       globalThis.removeEventListener("focus", revalidate);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, []);
+  }, [retryEpoch]);
 
   return (
     <section className="totp-code" aria-labelledby="totp-code-title">
       <h3 id="totp-code-title">Current verification code</h3>
       {code === undefined ? null : (
-        <output
-          aria-live="polite"
-          data-expires-at={code.expiresAtUnixSeconds}
-          data-valid-from={code.validFromUnixSeconds}
-        >
-          {code.code}
-        </output>
+        <>
+          <span
+            className="totp-value"
+            data-expires-at={code.expiresAtUnixSeconds}
+            data-valid-from={code.validFromUnixSeconds}
+          >
+            {code.code}
+          </span>
+          <p className="visually-hidden" role="status">
+            Current TOTP code ready.
+          </p>
+        </>
       )}
       {code === undefined && codeError === undefined ? <p role="status">Calculating…</p> : null}
       {codeError === undefined ? null : (
-        <p className="error" role="alert">
-          {codeError}
-        </p>
+        <>
+          <p className="error" role="alert">
+            {codeError}
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setRetryEpoch((value) => value + 1)}
+          >
+            Try calculating again
+          </button>
+        </>
       )}
       <p>Codes refresh automatically. If a code is rejected, check this device’s clock.</p>
     </section>
   );
 }
 
-function itemDetails(
-  record: VaultWorkerItemRecord,
-  onEdit: () => void,
-  totpCode?: React.ReactNode,
-) {
+const detailLabels: Readonly<Record<string, string>> = Object.freeze({
+  accountName: "Account name",
+  algorithm: "Algorithm",
+  body: "Secure note",
+  codes: "Backup codes",
+  digits: "Digits",
+  issuer: "Issuer",
+  keyVersion: "Key version",
+  notes: "Notes",
+  password: "Password",
+  period: "Period",
+  secretBase32: "TOTP secret",
+  tags: "Tags",
+  url: "URL",
+  username: "Username",
+  value: "JSON value",
+});
+
+function detailLabel(key: string): string {
+  return detailLabels[key] ?? key;
+}
+
+function isSecretDetailField(item: VaultItem, key: string): boolean {
+  switch (item.type) {
+    case "login":
+      return key === "password" || key === "notes";
+    case "secure-note":
+      return key === "body";
+    case "totp":
+      return key === "secretBase32";
+    case "backup-code":
+      return key === "codes" || key === "notes";
+    case "json":
+      return key === "value";
+  }
+}
+
+function detailValue(value: unknown): string {
+  return typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? "");
+}
+
+function ItemDetails({
+  computeTotp,
+  onEdit,
+  record,
+}: Readonly<{
+  computeTotp?: () => Promise<VaultWorkerTotpCode>;
+  onEdit: () => void;
+  record: VaultWorkerItemRecord;
+}>) {
   const item = record.item;
+  const [revealed, setRevealed] = useState<ReadonlySet<string>>(() => new Set());
+  const [revealStatus, setRevealStatus] = useState<string>();
+
+  function toggleSecret(key: string): void {
+    const next = new Set(revealed);
+    const label = detailLabel(key);
+    if (next.has(key)) {
+      next.delete(key);
+      setRevealStatus(`${label} hidden.`);
+    } else {
+      next.add(key);
+      setRevealStatus(`${label} shown.`);
+    }
+    setRevealed(next);
+  }
+
+  function resetRevealedSecrets(): void {
+    setRevealed(new Set());
+    setRevealStatus(undefined);
+  }
+
   return (
     <article className="item-detail" aria-labelledby="item-detail-title">
       <div className="section-heading">
@@ -223,14 +312,43 @@ function itemDetails(
           Edit item
         </button>
       </div>
-      {totpCode}
+      {computeTotp === undefined ? null : (
+        <TotpCodeDisplay onCompute={computeTotp} onError={resetRevealedSecrets} />
+      )}
+      {revealStatus === undefined ? null : (
+        <p className="visually-hidden" role="status">
+          {revealStatus}
+        </p>
+      )}
       <dl>
         {Object.entries(item).map(([key, value]) => {
           if (key === "schemaVersion" || key === "type" || key === "title") return null;
+          const secret = isSecretDetailField(item, key);
+          const visible = !secret || revealed.has(key);
+          const label = detailLabel(key);
           return (
             <div key={key}>
-              <dt>{key}</dt>
-              <dd>{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</dd>
+              <dt>{label}</dt>
+              <dd>
+                {visible ? (
+                  <span
+                    className="secret-value"
+                    {...(secret ? { id: `detail-secret-${key}` } : {})}
+                  >
+                    {detailValue(value)}
+                  </span>
+                ) : null}
+                {secret ? (
+                  <button
+                    type="button"
+                    className="secondary secret-toggle"
+                    aria-expanded={visible}
+                    onClick={() => toggleSecret(key)}
+                  >
+                    {visible ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+                  </button>
+                ) : null}
+              </dd>
             </div>
           );
         })}
@@ -267,8 +385,21 @@ export function VaultApp({
   const [recoveryConfirmation, setRecoveryConfirmation] = useState("");
   const [metadata, setMetadata] = useState<LocalVaultMetadata>();
   const [page, setPage] = useState<VaultWorkerSummaryPage>();
+  const [pageCursorHistory, setPageCursorHistory] = useState<readonly string[]>([]);
+  const [pageLoadFailed, setPageLoadFailed] = useState(false);
   const [selected, setSelected] = useState<VaultWorkerItemRecord>();
   const [editor, setEditor] = useState<EditorTarget>();
+  const [editorDirty, setEditorDirty] = useState(false);
+  const [navigationIntent, setNavigationIntent] = useState<NavigationIntent>();
+  const [operationStatus, setOperationStatus] =
+    useState<
+      Readonly<{
+        id: number;
+        message: string;
+      }>
+    >();
+  const [privacyEpoch, setPrivacyEpoch] = useState(0);
+  const nextStatusId = useRef(1);
 
   useEffect(() => {
     if (support !== undefined) {
@@ -313,6 +444,16 @@ export function VaultApp({
     return broker.current;
   }
 
+  function announce(message: string): void {
+    const id = nextStatusId.current;
+    nextStatusId.current += 1;
+    setOperationStatus({ id, message });
+  }
+
+  function resetDetailPrivacy(): void {
+    setPrivacyEpoch((value) => value + 1);
+  }
+
   function resetSecrets(): void {
     setPassword("");
     setPasswordAgain("");
@@ -320,8 +461,14 @@ export function VaultApp({
     setRecoveryConfirmation("");
     setMetadata(undefined);
     setPage(undefined);
+    setPageCursorHistory([]);
+    setPageLoadFailed(false);
     setSelected(undefined);
     setEditor(undefined);
+    setEditorDirty(false);
+    setNavigationIntent(undefined);
+    setOperationStatus(undefined);
+    resetDetailPrivacy();
   }
 
   async function loadPage(
@@ -332,8 +479,14 @@ export function VaultApp({
   ): Promise<void> {
     const vaultId = session.vaults[0]?.id;
     if (vaultId === undefined) throw new Error("missing vault");
-    const nextPage = await active.listItemSummaries(vaultId, 24, cursor);
-    if (operationEpoch.current === epoch) setPage(nextPage);
+    if (operationEpoch.current === epoch) setPageLoadFailed(false);
+    try {
+      const nextPage = await active.listItemSummaries(vaultId, 24, cursor);
+      if (operationEpoch.current === epoch) setPage(nextPage);
+    } catch (cause) {
+      if (operationEpoch.current === epoch) setPageLoadFailed(true);
+      throw cause;
+    }
   }
 
   async function run(
@@ -348,7 +501,10 @@ export function VaultApp({
     try {
       await action(epoch);
     } catch (cause) {
-      if (operationEpoch.current === epoch) setError(errorMessage(cause));
+      if (operationEpoch.current === epoch) {
+        resetDetailPrivacy();
+        setError(errorMessage(cause));
+      }
     } finally {
       if (operationEpoch.current === epoch) {
         operationInFlight.current = false;
@@ -365,7 +521,9 @@ export function VaultApp({
       setPassword("");
       setMetadata(session);
       setScreen("unlocked");
+      announce("Loading items…");
       await loadPage(session, epoch);
+      if (operationEpoch.current === epoch) announce("Page 1 loaded.");
     });
     setPassword("");
   }
@@ -388,15 +546,28 @@ export function VaultApp({
 
   async function confirmRecovery(event: FormEvent): Promise<void> {
     event.preventDefault();
-    await run(async (epoch) => {
-      const session = await currentBroker().confirmEnrollment(recoveryConfirmation);
-      if (operationEpoch.current !== epoch) return;
-      setRecoveryKit("");
-      setRecoveryConfirmation("");
-      setMetadata(session);
-      setScreen("unlocked");
-      await loadPage(session, epoch);
-    });
+    await run(
+      async (epoch) => {
+        const session = await currentBroker().confirmEnrollment(recoveryConfirmation);
+        if (operationEpoch.current !== epoch) return;
+        setRecoveryKit("");
+        setRecoveryConfirmation("");
+        setMetadata(session);
+        setScreen("unlocked");
+        announce("Loading items…");
+        await loadPage(session, epoch);
+        if (operationEpoch.current === epoch) announce("Page 1 loaded.");
+      },
+      (cause) => {
+        const message = safeMessage(cause);
+        if (message !== genericErrors["confirmation-failed"]) return message;
+        broker.current?.terminate();
+        broker.current = undefined;
+        resetSecrets();
+        setScreen("enroll");
+        return "The recovery kit did not match. Enrollment was cancelled. Choose a master password to start again.";
+      },
+    );
   }
 
   async function cancelEnrollment(): Promise<void> {
@@ -436,6 +607,7 @@ export function VaultApp({
 
   async function openItem(id: string): Promise<void> {
     if (metadata === undefined) return;
+    announce("Opening item…");
     await run(async (epoch) => {
       const vaultId = metadata.vaults[0]?.id;
       if (vaultId === undefined) throw new Error("missing vault");
@@ -443,6 +615,9 @@ export function VaultApp({
       if (operationEpoch.current === epoch) {
         setSelected(item);
         setEditor(undefined);
+        setEditorDirty(false);
+        resetDetailPrivacy();
+        announce("Item opened.");
       }
     });
   }
@@ -458,7 +633,75 @@ export function VaultApp({
     nextEditorIdentity.current += 1;
     setSelected(undefined);
     setEditor({ identity, kind: "create" });
+    setEditorDirty(false);
+    setNavigationIntent(undefined);
+    resetDetailPrivacy();
     setError(undefined);
+  }
+
+  function performNavigation(intent: NavigationIntent): void {
+    setNavigationIntent(undefined);
+    setEditorDirty(false);
+    if (intent.kind === "create") beginCreate();
+    else {
+      setEditor(undefined);
+      setSelected(undefined);
+      resetDetailPrivacy();
+      void openItem(intent.id);
+    }
+  }
+
+  function requestNavigation(intent: NavigationIntent): void {
+    if (editor !== undefined && editorDirty) {
+      setNavigationIntent(intent);
+      return;
+    }
+    performNavigation(intent);
+  }
+
+  function cancelEditor(): void {
+    if (editor?.kind === "create") focusCreateAfterRender.current = true;
+    setEditor(undefined);
+    setEditorDirty(false);
+    setNavigationIntent(undefined);
+    resetDetailPrivacy();
+    setError(undefined);
+  }
+
+  function retryCurrentPage(): void {
+    const session = metadata;
+    if (session === undefined) return;
+    const cursor = pageCursorHistory.at(-1);
+    setPage(undefined);
+    setPageLoadFailed(false);
+    announce("Loading items…");
+    void run(async (epoch) => {
+      await loadPage(session, epoch, cursor);
+      if (operationEpoch.current === epoch)
+        announce(`Page ${pageCursorHistory.length + 1} loaded.`);
+    });
+  }
+
+  function navigatePage(direction: "next" | "previous"): void {
+    const session = metadata;
+    if (session === undefined || page === undefined) return;
+    const nextHistory =
+      direction === "next"
+        ? page.nextCursor === undefined
+          ? undefined
+          : [...pageCursorHistory, page.nextCursor]
+        : pageCursorHistory.slice(0, -1);
+    if (nextHistory === undefined) return;
+    const cursor = nextHistory.at(-1);
+    setPage(undefined);
+    setPageCursorHistory(nextHistory);
+    setPageLoadFailed(false);
+    announce("Loading items…");
+    void run(async (epoch) => {
+      await loadPage(session, epoch, cursor);
+      if (operationEpoch.current !== epoch) return;
+      announce(`Page ${nextHistory.length + 1} loaded.`);
+    });
   }
 
   function saveEditorItem(item: VaultItem): void {
@@ -486,9 +729,14 @@ export function VaultApp({
         if (operationEpoch.current !== epoch) return;
         setSelected({ ...revision, item });
         setEditor(undefined);
+        setEditorDirty(false);
         setPage(undefined);
+        setPageCursorHistory([]);
+        setPageLoadFailed(false);
+        announce("Item saved. Refreshing the item list…");
         try {
           await loadPage(session, epoch, undefined, active);
+          if (operationEpoch.current === epoch) announce("Item saved. Page 1 loaded.");
         } catch {
           if (operationEpoch.current === epoch)
             setError("The item was saved, but the item list could not refresh.");
@@ -540,9 +788,14 @@ export function VaultApp({
         focusItemsAfterRender.current = true;
         setSelected(undefined);
         setEditor(undefined);
+        setEditorDirty(false);
         setPage(undefined);
+        setPageCursorHistory([]);
+        setPageLoadFailed(false);
+        announce("Item deleted. Refreshing the item list…");
         try {
           await loadPage(session, epoch, undefined, active);
+          if (operationEpoch.current === epoch) announce("Item deleted. Page 1 loaded.");
         } catch {
           if (operationEpoch.current === epoch)
             setError("The item was deleted, but the item list could not refresh.");
@@ -598,6 +851,15 @@ export function VaultApp({
           <small>Local encrypted vault</small>
         </div>
       </header>
+      <aside className="safety-notice" aria-label="Development safety warning">
+        <strong>Development build — synthetic test data only.</strong> Neutron has not passed its
+        Stage 5 security review. Do not store real credentials.
+      </aside>
+      {operationStatus === undefined ? null : (
+        <p className="visually-hidden" role="status" key={operationStatus.id}>
+          {operationStatus.message}
+        </p>
+      )}
       {error === undefined ? null : (
         <p className="error" role="alert">
           {error}
@@ -728,9 +990,17 @@ export function VaultApp({
                 Your vault
               </h1>
             </div>
-            <button type="button" className="danger" onClick={() => void lock()}>
-              Lock now
-            </button>
+            <div className="lock-action">
+              <button
+                type="button"
+                className="danger"
+                aria-describedby="lock-warning"
+                onClick={() => void lock()}
+              >
+                Lock now
+              </button>
+              <p id="lock-warning">Locks immediately and discards unsaved changes.</p>
+            </div>
           </div>
           <div className="vault-grid">
             <section className="item-list" aria-labelledby="items-title">
@@ -748,7 +1018,14 @@ export function VaultApp({
                   >
                     Items
                   </h2>
-                  <span>{page?.items.length ?? 0} shown</span>
+                  <span>
+                    Page {pageCursorHistory.length + 1}
+                    {page !== undefined
+                      ? ` · ${page.items.length} shown`
+                      : pageLoadFailed
+                        ? " · unavailable"
+                        : " · loading"}
+                  </span>
                 </div>
                 <button
                   type="button"
@@ -760,18 +1037,32 @@ export function VaultApp({
                       node.focus();
                     }
                   }}
-                  onClick={beginCreate}
+                  onClick={() => requestNavigation({ kind: "create" })}
                 >
                   Create item
                 </button>
               </div>
-              {page === undefined || page.items.length === 0 ? (
+              {page === undefined && busy ? <p role="status">Loading items…</p> : null}
+              {!busy && pageLoadFailed ? (
+                <div className="warning" role="alert">
+                  <p>The item list could not be loaded.</p>
+                  <button type="button" className="secondary" onClick={retryCurrentPage}>
+                    Retry current page
+                  </button>
+                </div>
+              ) : null}
+              {page !== undefined && page.items.length === 0 ? (
                 <p className="empty">No items on this page.</p>
-              ) : (
+              ) : page === undefined ? null : (
                 <ul>
                   {page.items.map((item) => (
                     <li key={item.id}>
-                      <button type="button" onClick={() => void openItem(item.id)}>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        aria-current={selected?.id === item.id ? "true" : undefined}
+                        onClick={() => requestNavigation({ id: item.id, kind: "item" })}
+                      >
                         <span>{item.title}</span>
                         <small>{item.type}</small>
                       </button>
@@ -779,23 +1070,79 @@ export function VaultApp({
                   ))}
                 </ul>
               )}
-              {page?.issues.map((issue) => (
-                <p className="warning" key={issue.id}>
-                  One item could not be authenticated.
-                </p>
-              ))}
-              {page?.nextCursor === undefined ? null : (
-                <button
-                  className="secondary"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void run((epoch) => loadPage(metadata, epoch, page.nextCursor))}
-                >
-                  Next page
-                </button>
+              {page === undefined || page.issues.length === 0 ? null : (
+                <div className="warning corrupt-records" role="alert">
+                  <p>
+                    {page.issues.length} encrypted{" "}
+                    {page.issues.length === 1 ? "record was" : "records were"}
+                    {" skipped because authentication failed. "}
+                    {page.issues.length === 1 ? "It was" : "They were"} not modified.
+                  </p>
+                  <ul>
+                    {page.issues.map((issue) => (
+                      <li key={issue.id}>Record {issue.id}</li>
+                    ))}
+                  </ul>
+                  <p>
+                    Retry this page. If the warning persists, lock the vault and stop using this
+                    local copy.
+                  </p>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy}
+                    onClick={retryCurrentPage}
+                  >
+                    Retry current page
+                  </button>
+                </div>
+              )}
+              {page === undefined ? null : (
+                <nav className="pagination" aria-label="Item pages">
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={busy || pageCursorHistory.length === 0}
+                    onClick={() => navigatePage("previous")}
+                  >
+                    Previous page
+                  </button>
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={busy || page.nextCursor === undefined}
+                    onClick={() => navigatePage("next")}
+                  >
+                    Next page
+                  </button>
+                </nav>
               )}
             </section>
-            <section className="detail-panel" aria-live="polite">
+            <section className="detail-panel">
+              {navigationIntent === undefined ? null : (
+                <fieldset className="discard-confirmation">
+                  <legend ref={focusHeading} tabIndex={-1}>
+                    Discard unsaved changes?
+                  </legend>
+                  <p>Continuing will permanently clear the open item draft.</p>
+                  <div className="editor-actions">
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => performNavigation(navigationIntent)}
+                    >
+                      Discard and continue
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => setNavigationIntent(undefined)}
+                    >
+                      Keep editing
+                    </button>
+                  </div>
+                </fieldset>
+              )}
               {editor !== undefined ? (
                 <ItemEditor
                   key={
@@ -805,13 +1152,11 @@ export function VaultApp({
                   }
                   busy={busy}
                   {...(editor.kind === "edit" ? { initial: editor.base.item } : {})}
-                  onCancel={() => {
-                    if (editor.kind === "create") focusCreateAfterRender.current = true;
-                    setEditor(undefined);
-                    setError(undefined);
-                  }}
+                  onCancel={cancelEditor}
+                  onDirtyChange={setEditorDirty}
                   onGeneratePassphrase={generateEditorPassphrase}
                   onGeneratePassword={generateEditorPassword}
+                  privacyEpoch={privacyEpoch}
                   {...(editor.kind === "edit" ? { onDelete: deleteEditorItem } : {})}
                   onSave={saveEditorItem}
                 />
@@ -822,19 +1167,21 @@ export function VaultApp({
                   <p>Summaries contain only title, type, and revision metadata.</p>
                 </div>
               ) : (
-                itemDetails(
-                  selected,
-                  () => {
+                <ItemDetails
+                  key={`${selected.id}:${selected.generation}:${selected.keyVersion}:${privacyEpoch}`}
+                  record={selected}
+                  onEdit={() => {
                     setEditor({ base: selected, kind: "edit" });
+                    setEditorDirty(false);
+                    resetDetailPrivacy();
                     setError(undefined);
-                  },
-                  selected.item.type === "totp" ? (
-                    <TotpCodeDisplay
-                      key={`${selected.id}:${selected.generation}:${selected.keyVersion}`}
-                      onCompute={() => computeSelectedTotp(selected)}
-                    />
-                  ) : undefined,
-                )
+                  }}
+                  {...(selected.item.type === "totp"
+                    ? {
+                        computeTotp: () => computeSelectedTotp(selected),
+                      }
+                    : {})}
+                />
               )}
             </section>
           </div>

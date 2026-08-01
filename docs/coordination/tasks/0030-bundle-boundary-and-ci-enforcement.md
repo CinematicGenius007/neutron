@@ -1,11 +1,11 @@
 # TASK 0030 — Bundle boundary and CI enforcement
 
-Status: review
-Owner: unassigned (implemented by `/root`)
+Status: active
+Owner: unassigned (remediation required after review)
 Claimed: 2026-08-01T10:50:31Z
 Worktree/branch: shared-worktree (`main`)
-Reviewer: `/root/task_0030_reviewer`
-Review claimed: 2026-08-01T11:00:54Z
+Reviewer: unassigned
+Review claimed: —
 Depends on: 0029
 Blocks: 0031
 Security-sensitive: yes
@@ -154,4 +154,65 @@ pending against a committed artifact.
 
 ## Review
 
-Pending independent review of an exact committed artifact.
+Independent review of exact implementation commit `37a655a` by
+`/root/task_0030_reviewer`: **BLOCK — P0 0 / P1 1 / P2 1**.
+
+### P1 — repository-local marker collision bypasses the closed boundary
+
+`applicationSourcePath()` and `workspaceSourcePath()` identify roots with
+`lastIndexOf()` on the strings `/apps/web/src/` and `/packages/`. They do not
+require the module to be below the canonical `applicationSourceRoot` or the
+repository's actual `packages` root. A repository-local path containing either
+marker can therefore inherit an allowed classification or package identity.
+
+The reviewer reproduced this with a temporary tracked-shape module at
+`probe/apps/web/src/vault-worker-protocol.ts`. It exported a retained value and
+was imported by `apps/web/src/main.tsx`. The module is outside the inventoried
+source tree, but its suffix classified it as the allowed shared
+`vault-worker-protocol.ts`; `pnpm --filter @neutron/web build` passed and emitted
+the changed window asset `index-CsG3KObm.js`. Both edits and the probe file were
+removed. This refutes the claimed relocation/split closure and the exact
+repository-local window surface.
+
+Remediation must anchor application and workspace classification to their exact
+normalized canonical roots, then add regression cases for decoy marker segments
+inside the repository. A later reviewer must reproduce this exact bypass as a
+non-zero build.
+
+### P2 — worker URL exception accepts a forged query prefix
+
+The exception combines a query-stripped source classification with
+`id.endsWith("?worker&url")`. Consequently
+`vault-worker-entry.ts?raw?worker&url` is accepted even though it is not the
+single exact `vault-worker-entry.ts?worker&url` reference. A temporary real
+import using that query passed the production web build and emitted
+`index-r3OeNI9H.js`; the edit was removed. This does not authorize a different
+source file, but it contradicts the exact-query criterion and leaves Vite query
+semantics broader than reviewed. Compare the complete normalized module ID to
+the exact entry path plus literal query and add a regression test for prefixed,
+duplicated, reordered, and suffixed query forms.
+
+### Controls and gates independently reproduced
+
+The reviewer also reproduced real non-zero controls before restoring the tree:
+
+- window side-effect import of `local-vault.js` rejected on
+  `packages/crypto/dist/provider.js`;
+- worker side-effect import of `app.js` rejected on
+  `react.production.js`.
+
+After restoration, frozen install, typecheck, lint (110 files), format check
+(110 files), root tests, the focused boundary suite (1 file / 6 tests), root
+build, browser tests (4 files / 35 Chromium tests and 3 files / 3 engine-matrix
+tests), production CSP flow, and `git diff --check` passed without a retry.
+Root build again emitted `index-C3y-6n8v.js` (314,822 bytes),
+`vault-worker-entry-DDLJAMuT.js` (661,361 bytes), and `index-uH94Wcke.css`
+(5,922 bytes). The tree was clean before this documentation-only BLOCK record.
+
+The root build now does invoke Vite and `verify-build.mjs`; the entry and
+unaccounted-chunk controls remain live; the worker package set is bounded and
+rejects React; the source inventory recognizes the declared TS/JS variants,
+JSON, and CSS and throws on symlink-like directory entries. The CI workflow's
+pinned action references, Playwright installation, and two security commands
+are syntactically credible, but no connected GitHub run was inspected or
+claimed.

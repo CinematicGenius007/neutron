@@ -334,3 +334,32 @@ No product behavior, persistence, protocol, worker runtime, cryptography,
 dependency, or public policy changed. TASK-0030 must be committed and reviewed
 adversarially at that exact commit before closure. TASK-0031 remains an unfiled
 queue label and must not start yet.
+
+## TASK-0030 independent review BLOCK — 2026-08-01T11:07:26Z
+
+Independent review of exact implementation commit `37a655a` returned
+**BLOCK — P0 0 / P1 1 / P2 1**. TASK-0030 is back in `active` awaiting an
+orchestrator-assigned remediator; TASK-0031 must not be filed or started.
+
+The P1 is a reproduced repository-local relocation bypass. The classifier
+searches for the last `/apps/web/src/` or `/packages/` marker instead of
+anchoring to the canonical roots. A temporary module at
+`probe/apps/web/src/vault-worker-protocol.ts` was therefore treated as the
+allowed shared module and entered the window bundle; the filtered production
+build passed. The P2 is a reproduced query-exactness gap:
+`vault-worker-entry.ts?raw?worker&url` passed because the exception checks only
+the query-stripped basename plus an `endsWith("?worker&url")` suffix. All probe
+edits and paths were removed.
+
+The reviewer separately confirmed that direct window-to-worker and
+worker-to-window violations fail non-zero. After restoration, frozen install,
+typecheck, lint/format across 110 files, root tests, the focused 6-test boundary
+suite, root build, 35 Chromium browser tests plus 3 engine-matrix tests,
+production CSP flow, and diff check passed without retry. Baseline asset names
+and exact sizes remained 314,822 / 661,361 / 5,922 bytes. This is local evidence
+only; no connected CI run was claimed.
+
+The next safe action is to assign TASK-0030 remediation. Anchor both classifiers
+to exact canonical roots, make the worker URL comparison exact, and add both
+regressions. Do not create TASK-0031 until a different reviewer passes the
+remediation commit.

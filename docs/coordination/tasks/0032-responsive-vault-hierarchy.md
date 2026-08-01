@@ -4,7 +4,7 @@ Status: review
 Owner: unassigned (implementation and remediation by `/root`)
 Claimed: 2026-08-01T20:06:00Z
 Worktree/branch: shared-worktree (`main`)
-Reviewer: unassigned
+Reviewer: unassigned (confirmation review interrupted by user stop)
 Review claimed: —
 Depends on: 0029, 0031
 Blocks: —
@@ -139,6 +139,16 @@ secret reset after **Back to items**, dirty-editor behavior, and desktop parity.
 - 2026-08-01T20:23:44Z — Remediation finished. Ownership cleared and task
   returned to `review`; the confirmation criterion remains unchecked pending a
   committed artifact and reassignment to the independent reviewer.
+- 2026-08-01T20:33:29Z — Remediation committed as exact `783ba59`; the commit
+  tool call remained pending for approximately nine minutes before returning
+  success, with no concurrent task work. Exact `git diff --check 99e4c9f
+  783ba59` and `git show --check 783ba59` pass. Orchestrator reassigned
+  `/root/task_0032_review` for confirmation of this exact artifact.
+- 2026-08-01T20:37:52Z — User requested the goal stop at the nearest checkpoint.
+  Orchestrator interrupted the running confirmation review. No confirmation
+  verdict or review evidence was returned or recorded, so the task remains
+  `review`, the separate-review criterion remains unchecked, and reviewer
+  ownership is cleared for a fresh assignment. No new task was started.
 
 ## Handoff
 
@@ -148,10 +158,11 @@ page state. **Back to items** clears selected detail and its reveal component
 before returning focus to Items. No dependency, persistence, worker/protocol,
 crypto, recovery, metadata, or network path changed.
 
-Initial exact commit `99e4c9f` is blocked by the review below. Its complete
-bounded remediation is ready for an identifiable commit and independent
-confirmation. Do not start ADR-0016 idle auto-lock concurrently; it overlaps
-the same UI paths.
+Initial exact commit `99e4c9f` is blocked by the review below. Complete bounded
+remediation is committed at exact `783ba59` and awaits independent confirmation.
+The prior confirmation attempt was interrupted at the user's stop request and
+has no verdict; a new reviewer claim must be recorded before resumption.
+Do not start ADR-0016 idle auto-lock concurrently; it overlaps the same UI paths.
 
 ## Review
 

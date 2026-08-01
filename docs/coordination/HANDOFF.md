@@ -534,3 +534,31 @@ The next safe action is to commit this bounded remediation, record its exact
 hash, and reassign `/root/task_0032_review` for confirmation. Do not start
 ADR-0016 or any new task first. No connected CI run, deployment, Stage 5
 approval, or permission to use real credentials is claimed.
+
+Remediation is now committed at exact `783ba59`. Exact `git diff --check
+99e4c9f 783ba59` and `git show --check 783ba59` pass. TASK-0032 remains in
+`review`, reassigned to `/root/task_0032_review` for confirmation of that exact
+artifact; no later task is authorized before its verdict.
+
+## User-requested stop checkpoint — 2026-08-01T20:37:52Z
+
+The user asked to stop the goal at the nearest viable checkpoint. The
+orchestrator interrupted `/root/task_0032_review` while it was confirming exact
+remediation commit `783ba59`. That confirmation attempt returned no verdict and
+wrote no confirmation record. Reviewer ownership is therefore cleared rather
+than implying completed coverage. TASK-0032 remains `review`; its separate-review
+criterion is deliberately unchecked.
+
+Repository-verifiable completed work is unchanged: initial candidate `99e4c9f`
+has the recorded BLOCK (P0 0 / P1 1 / P2 2), and exact remediation `783ba59`
+addresses all findings with the implementer gate evidence recorded above. The
+only dirty paths before this stop checkpoint commit are this handoff and
+`docs/coordination/tasks/0032-responsive-vault-hierarchy.md`; product code is
+clean at `783ba59`.
+
+The next safe action in a later session is to read the required project and
+handoff documents, verify clean status and commits `99e4c9f` / `783ba59`, assign
+a fresh independent confirmation reviewer in TASK-0032, and review exact
+`783ba59`. Do not rerun implementation or start ADR-0016 first. No connected CI
+run, deployment, Stage 5 approval, or permission to use real credentials is
+claimed.

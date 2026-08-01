@@ -5,7 +5,7 @@ Branch: `main`
 Last committed checkpoint before Task 0024: `6d83747`
 Current checkpoint: Task 0024's code is implemented and every gate passes. Its
 original review is **not** repository-verifiable. TASK-0028 records that gap and
-is itself in `review`.
+is closed after independent review of exact commit `8186c3d`.
 
 This is a navigation checkpoint, not a substitute for authoritative task files
 or accepted ADRs. Verify it against the repository before acting.
@@ -18,8 +18,8 @@ or accepted ADRs. Verify it against the repository before acting.
 3. Read `docs/coordination/reviews/2026-08-01-multi-agent-integrity-audit.md`
    before reading any task file. It states what this repository can and cannot
    demonstrate, and several records read differently once you know.
-4. Read `docs/coordination/tasks/0028-coordination-integrity-repair.md`. It is
-   in `review` and needs an independent reviewer who is not its implementer.
+4. Read `docs/coordination/tasks/0028-coordination-integrity-repair.md`. Its
+   final review closes the documentation repair at P0 0 / P1 0 / P2 0.
 5. Read Task 0024 including its appended `## Review record correction
    (2026-08-01)` section. Do not look for a separate Task 0024 review record;
    none exists, and that is the finding.
@@ -42,8 +42,9 @@ The accurate position, stated plainly:
 - Under `AGENTS.md`, the independent-review requirement is therefore not
   demonstrated by the repository for this task. That is a statement about
   evidence; the audit can neither confirm nor refute that the review happened.
-- Task 0024's `Status` field is untouched. Whether it should change is deferred
-  to the TASK-0028 reviewer and the orchestrator.
+- Task 0024's `Status` field is untouched. TASK-0028's final reviewer left it
+  `done` because changing the field cannot reconstruct the missing artifact;
+  the header evidence caveat is the authoritative warning.
 
 Do not repeat the earlier claim that Task 0024 is independently approved.
 
@@ -257,3 +258,15 @@ the Task 0024 diff against `de8b259` is 78 insertions and 0 deletions. TASK-0028
 remains in `review` until an independent reviewer confirms the exact committed
 remediation artifact. Do not create TASK-0029 before that review closes
 TASK-0028.
+
+## TASK-0028 closure — 2026-08-01T05:56:16Z
+
+An independent final reviewer examined exact commit `8186c3d`, re-derived the
+three residual fixes, and returned **PASS — P0 0 / P1 0 / P2 0**. No build,
+test, browser, or production gate was run or claimed by that review. Task 0028
+is `done`; its earlier checkpoint and continuation sections remain as history.
+
+The working tree was clean before the closure record was added. TASK-0029 may
+now be filed as the next task in the queue, but no TASK-0029, TASK-0030, or
+TASK-0031 task file exists yet. Do not edit product code until the orchestrator
+creates, preflights, and assigns the next task.

@@ -1,11 +1,13 @@
 # TASK 0028 — Coordination integrity repair
 
-Status: review
+Status: done
 Owner: unassigned (implemented by `task_0028_implementer`)
 Claimed: 2026-08-01T05:15:25Z
 Worktree/branch: shared-worktree (main)
-Reviewer: `task_0028_reviewer`
-Review claimed: 2026-08-01T05:22:43Z
+Reviewer: `task_0028_reviewer` (initial and confirmation passes),
+`/root/task_0028_final_review` (exact-commit closure)
+Review claimed: 2026-08-01T05:22:43Z; final review
+2026-08-01T05:56:16Z
 Review scope: documentation only; no gate, build, or test was re-run by the
 reviewer. Section 1 of the audit record ("confirmed sound") was NOT
 independently re-verified by anyone; it records a single unreplicated run.
@@ -142,7 +144,7 @@ Full findings, with severities and evidence, are in
 - [x] No new claim is added to `CLAUDE.md` that this task did not verify.
 - [x] No file under `apps/`, `packages/`, or `scripts/` is modified.
 - [x] No real secrets in any changed file.
-- [ ] Independent review by an agent other than the implementer.
+- [x] Independent review by an agent other than the implementer.
 
 ## Verification
 
@@ -753,3 +755,43 @@ description of the current tree.
 
 TASK-0028 remains in `review` pending independent confirmation of the exact
 resulting artifact. The implementing agent has not closed it.
+
+## Final review — exact committed artifact
+
+Reviewer: `/root/task_0028_final_review`, independent of
+`task_0028_implementer` and of the earlier reviewer. Review timestamp:
+2026-08-01T05:56:16Z, read directly from `date -u`.
+
+Reviewed artifact: commit
+`8186c3d2a66177faa41fceffeb4855242d567a9e` on `main`, with a clean working
+tree before this review record was written.
+
+Scope: documentation and version-control evidence only. I ran no build, test,
+browser, or production gate and did not treat the audit's single unreplicated
+gate run as independently confirmed evidence.
+
+I attempted to falsify each residual and the task's closure conditions:
+
+- **F8 is discharged.** Against `de8b259`, Task 0024 has 78 insertions and
+  zero deletions. Its diff contains only the three-line `Review evidence:`
+  metadata field and the appended 75-line correction section. The replacement
+  wording says no character that existed before TASK-0028 changed, says the
+  deletion count is zero, and leaves the pre-existing `## Review` untouched.
+- **The F4 residual is discharged.** The nearby HANDOFF reference says the work
+  is only queued under the TASK-0030 label and that no task file exists. Task
+  0024 likewise says its residue is queued under the TASK-0029 label and that
+  no task file exists. No `0029-*`, `0030-*`, or `0031-*` task file exists.
+- **The F2 wording is discharged.** The audit record, Task 0024 correction,
+  and this task's verification note all say that an unscoped count rises as
+  documents cite `task_0024`; `git grep -n "task_0024" de8b259 | wc -l`
+  independently returns exactly 3.
+- `git diff --check 8186c3d^ 8186c3d` is clean. The commit touches only the
+  HANDOFF, the audit record, Task 0024, and Task 0028, all declared allowed
+  paths. No product, package, script, dependency, ADR, or Task 0024 status
+  changed.
+
+Verdict: **PASS — P0 0 / P1 0 / P2 0.** Every acceptance criterion is
+satisfied. TASK-0028 is closed. Task 0024 remains `done` with its evidence
+caveat visible in the header; changing that status would not reconstruct the
+missing original review artifact. TASK-0029 may now be filed by the
+orchestrator, but no such task file exists at this review point.

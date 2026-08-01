@@ -1,6 +1,6 @@
 # TASK 0023 — Wordlist-backed passphrase generator
 
-Status: review
+Status: done
 Owner: unassigned
 Claimed: 2026-08-01T01:48:52Z
 Worktree/branch: shared-worktree (main)
@@ -110,7 +110,7 @@ the password path rather than becoming a second dialect.
       survives emitted production and is rendered in the generator surface.
 - [x] Built window and worker bundle sizes are measured and recorded before and
       after the change.
-- [ ] All repository gates and an independent adversarial security review pass.
+- [x] All repository gates and an independent adversarial security review pass.
 
 ## Verification
 
@@ -177,6 +177,10 @@ sizes before and after, and any test retry with its exact cause.
   independent reviewer. Re-ran every required command without retry: frozen
   install; typecheck; lint; format check; 12 unit test files with 102 tests;
   build; 7 browser files with 27 tests; exact-CSP production; and diff check.
+- 2026-08-01T02:10:53Z — Independent remediation review passed with P0 0,
+  P1 0, P2 0. Confirmed all three prior P2 findings were closed, the notice-path
+  scope correction was ADR-required and did not overlap active work, and no
+  regression was introduced. Moved Task 0023 to done.
 
 ## Handoff
 
@@ -192,5 +196,24 @@ crypto package, dependency, or network format changed.
 
 ## Review
 
-Reviewer, date, findings, and disposition. Required; the implementer must not
-self-approve.
+Reviewer: `/root/task_0023_review`
+
+Initial review, 2026-08-01: PASS with P0 0, P1 0, P2 3. Fresh TLS retrieval
+reproduced the 108,800-byte upstream digest and the 62,143-byte canonical
+digest; source inspection confirmed incremental selection with no selected-word
+or selected-index collection; targeted unit/protocol tests, all repository
+gates, browser suites, the emitted exact-CSP production flow, allowed-path
+inspection, and clean-status checks passed. The three P2 findings were a weaker
+alphabet regex in invariant tests, stale future-tense and superseded-ADR wording
+in the third-party notice, and missing explicit negative-count plus
+pending-enrollment passphrase probes.
+
+Remediation review, 2026-08-01: PASS with P0 0, P1 0, P2 0. Commit `286782d`
+uses the exact ADR word grammar with separate length bounds in both unit and
+emitted-production checks, adds both missing boundary/state probes, and corrects
+the notice. Adding `docs/third-party-notices.md` to the task was legitimate:
+ADRs 0014/0015 require that notice and no active task overlapped it. Re-ran
+targeted tests (2 files, 24 tests), typecheck, lint, format check, the full unit
+suite (12 files, 102 tests), build, browser suites (7 files, 27 tests), the
+exact-CSP production flow, and `git diff --check`; all passed without retry and
+the worktree was clean. Final disposition: approved and closed.

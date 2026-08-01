@@ -472,7 +472,52 @@ try {
     await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
     true,
   );
+  assert.equal(
+    await page.locator(".item-list").evaluate((node) => getComputedStyle(node).display),
+    "block",
+  );
+  assert.equal(
+    await page.locator(".detail-panel").evaluate((node) => getComputedStyle(node).display),
+    "none",
+  );
+  assert.equal(await page.getByRole("navigation", { name: "Item pages" }).count(), 0);
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
+  await page.getByRole("form", { name: "Create item" }).waitFor();
+  assert.equal(
+    await page.locator(".item-list").evaluate((node) => getComputedStyle(node).display),
+    "none",
+  );
+  assert.equal(
+    await page.locator(".detail-panel").evaluate((node) => getComputedStyle(node).display),
+    "block",
+  );
+  await activateWithKeyboard(
+    page,
+    page.getByRole("form", { name: "Create item" }).getByRole("button", { name: "Cancel editing" }),
+  );
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Create item" })
+      .evaluate((node) => node === document.activeElement),
+    true,
+  );
+  assert.equal(
+    await page.locator(".item-list").evaluate((node) => getComputedStyle(node).display),
+    "block",
+  );
+  assert.equal(
+    await page.locator(".detail-panel").evaluate((node) => getComputedStyle(node).display),
+    "none",
+  );
   await page.setViewportSize({ width: 1280, height: 720 });
+  assert.equal(
+    await page.locator(".item-list").evaluate((node) => getComputedStyle(node).display),
+    "block",
+  );
+  assert.equal(
+    await page.locator(".detail-panel").evaluate((node) => getComputedStyle(node).display),
+    "block",
+  );
 
   const originalTitle = "Production CRUD fixture";
   const username = "production-crud-username";
@@ -572,6 +617,21 @@ try {
   assert.equal((await page.locator("body").textContent()).includes(generatedPassphrase), false);
   await activateWithKeyboard(page, page.getByRole("button", { name: "Show notes" }));
   assert.equal((await page.locator("body").textContent()).includes(loginNotes), true);
+  await activateWithKeyboard(page, page.getByRole("button", { name: "Back to items" }));
+  assert.equal((await page.locator("body").textContent()).includes(loginNotes), false);
+  assert.equal(
+    await page.locator("#items-title").evaluate((node) => node === document.activeElement),
+    true,
+  );
+  assert.equal(
+    await page.locator(".item-list").evaluate((node) => getComputedStyle(node).display),
+    "block",
+  );
+  assert.equal(
+    await page.locator(".detail-panel").evaluate((node) => getComputedStyle(node).display),
+    "none",
+  );
+  await activateWithKeyboard(page, page.getByRole("button", { name: new RegExp(originalTitle) }));
   await page.setViewportSize({ width: 1280, height: 720 });
   assertNoSentinels(await rawDatabaseDump(page), sentinels, "post-save encrypted IndexedDB");
 
@@ -647,8 +707,8 @@ try {
   await activateWithKeyboard(page, page.getByRole("button", { name: "Cancel deletion" }));
   await activateWithKeyboard(page, page.getByRole("button", { name: "Delete item" }));
   await activateWithKeyboard(page, page.getByRole("button", { name: "Confirm delete" }));
-  await page.getByText("No items on this page.").waitFor();
-  await page.getByRole("heading", { name: "Choose an item to decrypt it" }).waitFor();
+  await page.getByText("Your vault has no items yet.").waitFor();
+  await page.getByRole("heading", { name: "Create your first encrypted item" }).waitFor();
   assertNoSentinels(await rawDatabaseDump(page), sentinels, "deleted IndexedDB");
   assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "post-delete runtime");
 
@@ -690,7 +750,7 @@ try {
   assert.equal(await page.locator("#detail-secret-body").count(), 0);
   await activateWithKeyboard(page, page.getByRole("button", { name: "Delete item" }));
   await activateWithKeyboard(page, page.getByRole("button", { name: "Confirm delete" }));
-  await page.getByText("No items on this page.").waitFor();
+  await page.getByText("Your vault has no items yet.").waitFor();
   assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "secure-note deleted runtime");
 
   const backupTitle = "Production backup fixture";
@@ -726,7 +786,7 @@ try {
   assert.equal(await page.locator("#detail-secret-notes").count(), 0);
   await activateWithKeyboard(page, page.getByRole("button", { name: "Delete item" }));
   await activateWithKeyboard(page, page.getByRole("button", { name: "Confirm delete" }));
-  await page.getByText("No items on this page.").waitFor();
+  await page.getByText("Your vault has no items yet.").waitFor();
   assertNoSentinels(await rawDatabaseDump(page), sentinels, "backup deleted IndexedDB");
   assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "backup deleted runtime");
 
@@ -753,7 +813,7 @@ try {
   await activateWithKeyboard(page, page.getByRole("button", { name: "Edit item" }));
   await activateWithKeyboard(page, page.getByRole("button", { name: "Delete item" }));
   await activateWithKeyboard(page, page.getByRole("button", { name: "Confirm delete" }));
-  await page.getByText("No items on this page.").waitFor();
+  await page.getByText("Your vault has no items yet.").waitFor();
   assertNoSentinels(await rawDatabaseDump(page), sentinels, "JSON deleted IndexedDB");
   assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "JSON deleted runtime");
 
@@ -800,7 +860,7 @@ try {
   await page.reload({ waitUntil: "networkidle" });
   await page.locator("#unlock-password").fill(password);
   await page.getByRole("button", { name: "Unlock vault" }).click();
-  await page.getByText("No items on this page.").waitFor();
+  await page.getByText("Your vault has no items yet.").waitFor();
   const freshWorker = page.workers()[0];
   assert(freshWorker !== undefined, "fresh unlock worker is absent");
   assert.notEqual(freshWorker, activeWorkerBeforeLock);

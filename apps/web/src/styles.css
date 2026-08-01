@@ -274,6 +274,29 @@ h1 {
   min-height: 24rem;
   text-align: center;
 }
+.item-list-empty {
+  padding: 1.5rem 0.25rem;
+}
+.item-list-empty p:last-child {
+  margin-bottom: 0;
+}
+.empty-mark {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  margin: 0 auto 1rem;
+  border: 1px solid #405376;
+  border-radius: 1rem;
+  background: #14233c;
+  color: #70e1c8;
+  font-size: 1.8rem;
+  line-height: 1;
+}
+.compact-back {
+  display: none;
+  margin-bottom: 1rem;
+}
 .item-detail dl > div {
   padding: 0.8rem 0;
   border-top: 1px solid #273a5d;
@@ -402,9 +425,16 @@ h1 {
   .vault-grid {
     grid-template-columns: 1fr;
   }
+  .vault-grid[data-active-pane="detail"] .item-list,
+  .vault-grid[data-active-pane="list"] .detail-panel {
+    display: none;
+  }
   .item-list,
   .detail-panel {
     min-height: auto;
+  }
+  .compact-back {
+    display: inline-flex;
   }
   .empty-detail {
     min-height: 12rem;

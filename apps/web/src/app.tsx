@@ -668,6 +668,15 @@ export function VaultApp({
     setError(undefined);
   }
 
+  function returnToItems(): void {
+    focusItemsAfterRender.current = true;
+    setSelected(undefined);
+    setNavigationIntent(undefined);
+    resetDetailPrivacy();
+    setError(undefined);
+    announce("Item closed. Items ready.");
+  }
+
   function retryCurrentPage(): void {
     const session = metadata;
     if (session === undefined) return;
@@ -1004,7 +1013,10 @@ export function VaultApp({
               <p id="lock-warning">Locks immediately and discards unsaved changes.</p>
             </div>
           </div>
-          <div className="vault-grid">
+          <div
+            className="vault-grid"
+            data-active-pane={editor !== undefined || selected !== undefined ? "detail" : "list"}
+          >
             <section className="item-list" aria-labelledby="items-title">
               <div className="section-heading">
                 <div>
@@ -1020,18 +1032,30 @@ export function VaultApp({
                   >
                     Items
                   </h2>
-                  <span>
-                    Page {pageCursorHistory.length + 1}
-                    {page !== undefined
-                      ? ` · ${page.items.length} shown`
-                      : pageLoadFailed
-                        ? " · unavailable"
-                        : " · loading"}
-                  </span>
+                  {page !== undefined &&
+                  page.items.length === 0 &&
+                  pageCursorHistory.length === 0 &&
+                  page.nextCursor === undefined ? null : (
+                    <span>
+                      Page {pageCursorHistory.length + 1}
+                      {page !== undefined
+                        ? ` · ${page.items.length} shown`
+                        : pageLoadFailed
+                          ? " · unavailable"
+                          : " · loading"}
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"
-                  className="secondary"
+                  className={
+                    page !== undefined &&
+                    page.items.length === 0 &&
+                    pageCursorHistory.length === 0 &&
+                    page.nextCursor === undefined
+                      ? undefined
+                      : "secondary"
+                  }
                   disabled={busy}
                   ref={(node) => {
                     if (node !== null && focusCreateAfterRender.current) {
@@ -1054,7 +1078,16 @@ export function VaultApp({
                 </div>
               ) : null}
               {page !== undefined && page.items.length === 0 ? (
-                <p className="empty">No items on this page.</p>
+                <div className="empty item-list-empty">
+                  <p>
+                    {pageCursorHistory.length === 0 && page.nextCursor === undefined
+                      ? "Your vault has no items yet."
+                      : "No items on this page."}
+                  </p>
+                  {pageCursorHistory.length === 0 && page.nextCursor === undefined ? (
+                    <p>Create a login, secure note, TOTP seed, backup code, or JSON item.</p>
+                  ) : null}
+                </div>
               ) : page === undefined ? null : (
                 <ul>
                   {page.items.map((item) => (
@@ -1099,7 +1132,8 @@ export function VaultApp({
                   </button>
                 </div>
               )}
-              {page === undefined ? null : (
+              {page === undefined ||
+              (pageCursorHistory.length === 0 && page.nextCursor === undefined) ? null : (
                 <nav className="pagination" aria-label="Item pages">
                   <button
                     className="secondary"
@@ -1164,26 +1198,50 @@ export function VaultApp({
                 />
               ) : selected === undefined ? (
                 <div className="empty-detail">
-                  <p className="eyebrow">No item selected</p>
-                  <h2>Choose an item to decrypt it</h2>
-                  <p>Summaries contain only title, type, and revision metadata.</p>
+                  {page !== undefined &&
+                  page.items.length === 0 &&
+                  pageCursorHistory.length === 0 &&
+                  page.nextCursor === undefined ? (
+                    <>
+                      <p className="empty-mark" aria-hidden="true">
+                        +
+                      </p>
+                      <p className="eyebrow">Empty vault</p>
+                      <h2>Create your first encrypted item</h2>
+                      <p>The item type, title, and every field are encrypted before storage.</p>
+                      <button type="button" onClick={() => requestNavigation({ kind: "create" })}>
+                        Create your first item
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="eyebrow">No item selected</p>
+                      <h2>Choose an item to decrypt it</h2>
+                      <p>Summaries contain only title, type, and revision metadata.</p>
+                    </>
+                  )}
                 </div>
               ) : (
-                <ItemDetails
-                  key={`${selected.id}:${selected.generation}:${selected.keyVersion}:${privacyEpoch}`}
-                  record={selected}
-                  onEdit={() => {
-                    setEditor({ base: selected, kind: "edit" });
-                    setEditorDirty(false);
-                    resetDetailPrivacy();
-                    setError(undefined);
-                  }}
-                  {...(selected.item.type === "totp"
-                    ? {
-                        computeTotp: () => computeSelectedTotp(selected),
-                      }
-                    : {})}
-                />
+                <>
+                  <button type="button" className="secondary compact-back" onClick={returnToItems}>
+                    Back to items
+                  </button>
+                  <ItemDetails
+                    key={`${selected.id}:${selected.generation}:${selected.keyVersion}:${privacyEpoch}`}
+                    record={selected}
+                    onEdit={() => {
+                      setEditor({ base: selected, kind: "edit" });
+                      setEditorDirty(false);
+                      resetDetailPrivacy();
+                      setError(undefined);
+                    }}
+                    {...(selected.item.type === "totp"
+                      ? {
+                          computeTotp: () => computeSelectedTotp(selected),
+                        }
+                      : {})}
+                  />
+                </>
               )}
             </section>
           </div>

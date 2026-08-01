@@ -339,6 +339,51 @@ describe("React vault shell", () => {
     expect(document.activeElement?.textContent).toContain("Welcome back");
   });
 
+  it("keeps compact navigation single-context and makes an empty vault actionable", async () => {
+    class EmptyBroker extends FakeBroker {
+      override async listItemSummaries() {
+        return { issues: [], items: [] };
+      }
+    }
+
+    const emptyBroker = new EmptyBroker();
+    await render(emptyBroker);
+    await enter("unlock-password", "synthetic master password");
+    await click("Unlock vault");
+    expect(container?.querySelector(".vault-grid")?.getAttribute("data-active-pane")).toBe("list");
+    expect(container?.textContent).toContain("Your vault has no items yet.");
+    expect(container?.textContent).toContain("Create your first encrypted item");
+    expect(container?.querySelector('[aria-label="Item pages"]')).toBeNull();
+    const firstCreate = byText("Create item");
+    expect(firstCreate.classList.contains("secondary")).toBe(false);
+    await click("Create your first item");
+    expect(container?.querySelector(".vault-grid")?.getAttribute("data-active-pane")).toBe(
+      "detail",
+    );
+    await click("Cancel editing");
+    expect(container?.querySelector(".vault-grid")?.getAttribute("data-active-pane")).toBe("list");
+
+    await act(async () => root?.unmount());
+    container?.remove();
+    root = undefined;
+    container = undefined;
+
+    const broker = new FakeBroker();
+    await render(broker);
+    await enter("unlock-password", "synthetic master password");
+    await click("Unlock vault");
+    await click("Synthetic login");
+    expect(container?.querySelector(".vault-grid")?.getAttribute("data-active-pane")).toBe(
+      "detail",
+    );
+    await click("Show password");
+    expect(container?.textContent).toContain(secret);
+    await click("Back to items");
+    expect(container?.querySelector(".vault-grid")?.getAttribute("data-active-pane")).toBe("list");
+    expect(container?.textContent).not.toContain(secret);
+    expect(document.activeElement).toBe(container?.querySelector("#items-title"));
+  });
+
   it("abandons a failed recovery confirmation and starts enrollment from a clean broker", async () => {
     class ConfirmationFailureBroker extends FakeBroker {
       override async confirmEnrollment(): Promise<never> {

@@ -377,7 +377,9 @@ closed.
 ## Review record correction (2026-08-01)
 
 Recorded under TASK-0028 by `task_0028_implementer`. This section is appended.
-Nothing above it has been altered, including the `## Review` section, because
+No pre-existing character above it has been changed; deletions in this file's
+diff are zero. TASK-0028 inserted one `Review evidence:` line into the header
+metadata block and nothing else. The `## Review` section is untouched because
 retroactively rewriting a completed review record is itself a finding of the
 audit that produced this correction.
 
@@ -407,9 +409,9 @@ than by re-reading the prose above.
   returned only three string hits across the whole repository:
   `docs/coordination/HANDOFF.md:27` and lines 7 and 353 of this file. Every one
   is either this file's own metadata or a handoff assertion; none is a review
-  artifact. Run the grep unscoped against a later tree and the count is higher,
-  because this section and the TASK-0028 files also contain the string — scope
-  it to the commit to reproduce the finding.
+  artifact. Run the grep unscoped against a later tree and the count is higher
+  and keeps rising as documents cite the string — scope it to the commit to
+  reproduce the finding.
 - **All 55 commits in this repository share one Git identity**, so authorship
   cannot distinguish an implementer from a reviewer either.
 
@@ -431,7 +433,8 @@ rather than a CSS or visibility trick, that the detail renderer's item-type
 `switch` is exhaustive so a new item type is a compile error rather than a
 silently unmasked field, and that the lock path clears state before its first
 `await` with no guard, confirmation, or early return. The outstanding P1 and P2
-items are queued as TASK-0029.
+items are queued under the TASK-0029 label in `docs/coordination/HANDOFF.md`;
+no TASK-0029 task file exists yet.
 
 That re-review is evidence about the code. It does not retroactively create the
 missing review record, and it does not make the originally reviewed artifact

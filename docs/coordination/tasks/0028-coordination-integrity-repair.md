@@ -179,10 +179,9 @@ git show --numstat --format="" de8b259    # A1/F1: 2,094 product + 185 coord
 ```
 
 Note on the second command: it must be scoped to `de8b259`. An unscoped
-`grep -rn "task_0024"` over the working tree returns more, because this task
-file, the audit record, and the Task 0024 correction section all contain the
-string. That was a defect in an earlier draft of these instructions, found by
-the TASK-0028 reviewer.
+`grep -rn "task_0024"` over the working tree returns more, and the count keeps
+rising as documents cite the string. That was a defect in an earlier draft of
+these instructions, found by the TASK-0028 reviewer.
 
 ## Progress log
 
@@ -742,3 +741,15 @@ anything. This section records the true state rather than a tidy one.
 session applies F8, the F4 residual, and the F2 wording, then obtains a further
 confirmation from an independent reviewer before any closure. The implementing
 agent may not close it.
+
+## Residual remediation — 2026-08-01T05:51:34Z
+
+The next session applied only the three residual documentation fixes recorded
+in the checkpoint above: F8's exact-shape wording, local not-yet-filed
+qualifiers for the TASK-0029 and TASK-0030 labels, and the F2 explanation that
+an unscoped grep count rises as documents cite the string. The checkpoint's
+"NOT applied" list remains as history of `c98b69f`; this section supersedes its
+description of the current tree.
+
+TASK-0028 remains in `review` pending independent confirmation of the exact
+resulting artifact. The implementing agent has not closed it.

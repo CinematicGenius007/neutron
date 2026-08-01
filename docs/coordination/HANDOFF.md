@@ -80,7 +80,7 @@ Task 0023 checkpoint.
 Note what these gates do **not** cover. `.github/workflows/ci.yml` runs neither
 `test:browser` nor `test:production`, so the bundle-boundary control and the
 entire exact-CSP leakage scan are local-only evidence. See audit finding B4;
-TASK-0030 owns it.
+the work is queued under the TASK-0030 label below, but no task file exists yet.
 
 The exact-CSP production flow uses the real built worker and encrypted
 IndexedDB. It covers every classified secret field, redacted TOTP failure and
@@ -240,3 +240,20 @@ Do not mark TASK-0028 or Task 0024 done on the strength of this file. Do not
 create the queued task files while TASK-0028 is open. Do not treat the single
 unreplicated gate run above as independent verification — finding B4 records
 that these controls leave no evidence outside one agent's session.
+
+## Session continuation — 2026-08-01T05:53:00Z
+
+The three P2 residuals listed in the preceding checkpoint have now been
+remediated, so its "Outstanding" list is historical rather than current:
+
+- F8 now describes the actual append-only property: no character that existed
+  at `de8b259` changed, and the total Task 0024 diff remains zero deletions.
+- The TASK-0029 and TASK-0030 references each say locally that no corresponding
+  task file exists.
+- The F2 wording now says why an unscoped `task_0024` grep count keeps rising.
+
+No product path changed and no build or test was run. `git diff --check` passed;
+the Task 0024 diff against `de8b259` is 78 insertions and 0 deletions. TASK-0028
+remains in `review` until an independent reviewer confirms the exact committed
+remediation artifact. Do not create TASK-0029 before that review closes
+TASK-0028.

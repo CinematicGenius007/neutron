@@ -124,11 +124,11 @@ At commit `de8b259`, `grep -rn "task_0024"` returned exactly three string hits:
 `docs/coordination/tasks/0024-functional-ui-remediation.md:353`.
 `docs/coordination/reviews/` contained no Task 0024 file.
 
-Re-run that grep against a later tree and the count will be higher, because
-this record and the TASK-0028 files also contain the string. To reproduce the
-finding, scope it: `git grep -n "task_0024" de8b259`. The load-bearing fact is
-not the number but that every hit is either the task file's own metadata or a
-handoff assertion — none is a review artifact.
+Re-run that grep against a later tree and the count will be higher, and will
+keep rising as documents cite the string. To reproduce the finding, scope it:
+`git grep -n "task_0024" de8b259`. The load-bearing fact is not the number but
+that every hit is either the task file's own metadata or a handoff assertion —
+none is a review artifact.
 
 Task 0024's `## Review` section names no reviewed commit hash. Every comparable
 task does: 0022 names `4e0c979`, 0025 names `d94b925`, 0026 names `0fac69c`,

@@ -1,13 +1,13 @@
 # TASK 0026 — Provider upper-bounds test timeout margin
 
-Status: review
+Status: done
 Owner: unassigned (implemented by `/root`)
 Claimed: 2026-08-01T00:26:15Z
 Worktree/branch: shared-worktree (main)
 Reviewer: `/root/task_0026_reviewer`
 Review claimed: 2026-08-01T00:40:50Z
 Depends on: —
-Blocks: a reproducibly green `pnpm test` gate
+Blocks: 0023 and every later task that relies on a reproducibly green `pnpm test`
 Security-sensitive: yes
 
 ## Outcome
@@ -143,10 +143,12 @@ skip, retry, global timeout, pool, worker-count, parallelism, or source change.
 
 ## Progress log
 
-- 2026-08-01T05:30:00Z — Created from the Task 0025 independent review, which
+- 2026-08-01 prior session (wall time recorded as 05:30 Asia/Kolkata but
+  incorrectly suffixed `Z`) — Created from the Task 0025 independent review, which
   measured the failure with no concurrent load and refuted the load-based
   explanation.
-- 2026-08-01T05:50:00Z — Rewritten after the same reviewer measured per-test
+- 2026-08-01 prior session (wall time recorded as 05:50 Asia/Kolkata but
+  incorrectly suffixed `Z`) — Rewritten after the same reviewer measured per-test
   durations and refuted this task's own root cause. The failing test contains no
   Argon2id call and the 30 second limit is an explicit literal, not a framework
   default. Retitled and renamed from `0026-argon2id-test-timeout-margin.md`,
@@ -174,12 +176,25 @@ skip, retry, global timeout, pool, worker-count, parallelism, or source change.
   106 files, 94 Node tests, root build, and diff check all passed after the ten
   consecutive corrected post-change gates. Moved the exact two-file change to
   independent adversarial review.
+- 2026-08-01T00:45:11Z — Independent review passed commit `0fac69c` with P0 0,
+  P1 0, P2 1. The reviewer independently ran three full parallel gates plus all
+  static gates, recomputed every measurement, and confirmed the executable diff
+  changes only the intended upper-bounds timeout. Remediated its sole P2 by
+  identifying the inherited local wall times that had been mislabeled as UTC,
+  without inventing replacement UTC minutes. Task closed.
 
 ## Handoff
 
-Summarize the chosen approach, its measurement, and any residual flake.
+The exact 16 MiB upper-bounds workload and every assertion remain unchanged.
+Only its explicit timeout is now 60 seconds. Ten corrected local post-change
+gates and three independent reviewer gates passed; actual CI timing remains
+unknown until a connected CI run exists.
 
 ## Review
 
-Reviewer, date, findings, and disposition. Required; the implementer must not
-self-approve.
+Independent review by `/root/task_0026_reviewer` of commit `0fac69c`: **PASS**,
+P0 0, P1 0, P2 1. The sole P2 concerned two inherited progress timestamps whose
+Asia/Kolkata wall times were incorrectly suffixed `Z`; remediated above. The
+reviewer confirmed provider source, bounds, allocations, assertions, and all
+other timeout literals are byte-identical, with no skip, retry, configuration,
+or scheduling change. The reviewer edited no file.

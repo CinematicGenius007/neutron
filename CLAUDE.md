@@ -74,7 +74,22 @@ docs/coordination/     task files (authoritative state) + HANDOFF.md
 Boundary rules enforced by `apps/web/vite.config.ts` at build time: the window
 bundle must not contain `packages/crypto`, `local-vault.ts`,
 `indexeddb-repository.ts`, or the worker runtime; the worker bundle must not
-contain React or the UI modules. A violation fails `pnpm build`, not a test.
+contain React or the UI modules.
+
+Know exactly which command enforces this. Root `pnpm build` is
+`tsc --build`; it does not run Vite, does not run the boundary plugin, and does
+not run `apps/web/scripts/verify-build.mjs`. A boundary violation therefore does
+**not** fail root `pnpm build`. It fails:
+
+```bash
+pnpm --filter @neutron/web build   # vite build && verify-build.mjs
+pnpm --filter @neutron/web test:production
+```
+
+Nothing in `.github/workflows/ci.yml` runs either of those, so this control and
+the exact-CSP leakage scan are local-only evidence today. Wiring them into CI is
+queued but not yet filed as a task; the remediation queue in
+`docs/coordination/HANDOFF.md` is the authority on what is next.
 
 ## House style (match it; do not introduce a second dialect)
 
@@ -88,14 +103,27 @@ as the reference style.
 - **Fail closed, with one opaque failure.** Errors are stable codes that never
   echo input. Never return a partial result on a failure path.
 - **Freeze what you return.** `Object.freeze` on parsed records and constants.
-- **Validate the same fact independently on both sides.** A worker result is
-  checked by the worker against its own request, by the standalone response
-  parser against the global schema, and by the client broker against an
-  expectation captured *before* the request was sent. Do not collapse these.
+- **Validate the same fact independently on both sides.** The intended design is
+  three legs: the worker checks its result against its own request, the
+  standalone response parser checks it against the global schema, and the client
+  broker checks it against an expectation captured *before* the request was
+  sent. Do not collapse these, and do not remove one because it looks redundant.
+
+  All three legs exist today for only three of the fourteen worker operations:
+  `compute-totp`, `generate-password`, and `generate-passphrase`. The worker's
+  own leg is **absent** for `get-item`, `list-item-summaries`, `create-item`,
+  `update-item`, and `delete-item`. Treat the rule as binding on new code, and
+  do not describe the existing code as fully triple-validated. Restoring the
+  missing leg is queued but not yet filed as a task; see the remediation queue
+  in `docs/coordination/HANDOFF.md`.
 - **Clear owned byte buffers in `finally`, on success and failure**, and say in
   comments that this is best effort.
 - Strict TypeScript, no `any` at a trust boundary, no non-null assertions.
-- Comments explain security intent and invariants, never restate the code.
+- Comments should explain security intent and invariants, never restate the
+  code. This is the standard for new code, not a description of what is there:
+  `apps/web/src/vault-worker-protocol.ts`, named above as a reference for
+  parsing style, contains no comments at all. Copy its parsing discipline, not
+  its comment density.
 - Numbers use `_` separators (`1_024`). Biome enforces 100-column width, 2-space
   indent; run `pnpm format` rather than hand-aligning.
 

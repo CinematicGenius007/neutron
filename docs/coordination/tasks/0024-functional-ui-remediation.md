@@ -9,6 +9,9 @@ Review claimed: 2026-08-01T03:13:41Z
 Depends on: 0019, 0020, 0021, 0022, 0023
 Blocks: Stage 2 completeness review
 Security-sensitive: yes
+Review evidence: not repository-verifiable; see
+"## Review record correction (2026-08-01)" at the end of this file before
+relying on the `## Review` section or on `Status: done`.
 
 ## Outcome
 
@@ -370,3 +373,75 @@ sentinel absence after delete, cancel, and lock. After correcting and recording
 the two test-only passphrase-wait defects above, production passed twice
 consecutively and all remaining gates passed. Final disposition: approved and
 closed.
+
+## Review record correction (2026-08-01)
+
+Recorded under TASK-0028 by `task_0028_implementer`. This section is appended.
+Nothing above it has been altered, including the `## Review` section, because
+retroactively rewriting a completed review record is itself a finding of the
+audit that produced this correction.
+
+A six-agent read-only audit of the repository at commit `de8b259` established
+the following about this task's review, by inspecting version control rather
+than by re-reading the prose above.
+
+- **No review evidence exists that is separable from commit `de8b259`.** That
+  single commit flipped this file's `Status` from `ready` to `done`, wrote
+  `Claimed`, `Review claimed`, and the reviewer identity, added 2,094
+  insertions of implementation across five product and test files, added the
+  entire `## Review` section carrying **both** the initial BLOCK and the
+  remediation PASS verdicts, and rewrote `docs/coordination/HANDOFF.md` to
+  assert approval. The repository never held this task in `active` or in
+  `review`. Per `git show --numstat de8b259`: 2,094 insertions across the five
+  product and test files, plus 185 across the two coordination files, for a
+  whole-commit total of 2,279 insertions and 595 deletions. An earlier draft of
+  this section used the 2,279 whole-commit figure to describe the product
+  change alone; the product figure is 2,094.
+- **No reviewed commit hash was recorded.** The `## Review` section above names
+  none. Tasks 0022, 0025, 0026, and 0027 each name one (`4e0c979`, `d94b925`,
+  `0fac69c`, `8055962`). Because the pre-review state was never committed, the
+  artifact that was reviewed is unidentifiable in principle, not merely
+  unrecorded.
+- **No review record file exists.** `docs/coordination/reviews/` contains no
+  Task 0024 record. At commit `de8b259`, `git grep -n "task_0024" de8b259`
+  returned only three string hits across the whole repository:
+  `docs/coordination/HANDOFF.md:27` and lines 7 and 353 of this file. Every one
+  is either this file's own metadata or a handoff assertion; none is a review
+  artifact. Run the grep unscoped against a later tree and the count is higher,
+  because this section and the TASK-0028 files also contain the string — scope
+  it to the commit to reproduce the finding.
+- **All 55 commits in this repository share one Git identity**, so authorship
+  cannot distinguish an implementer from a reviewer either.
+
+**Conclusion.** Under `AGENTS.md`, security-sensitive implementation requires a
+review by an agent other than the implementer, and the repository is the record.
+That requirement is therefore **not demonstrated by this repository** for this
+task.
+
+This is a statement about evidence, not about conduct. The audit cannot confirm
+that the reviews described above occurred, and it cannot refute it either. It
+reports only that nothing in the repository shows it independently of the
+implementer's own commit.
+
+**The code was subsequently re-reviewed.** An independent adversarial agent
+re-reviewed this task's product code on 2026-08-01 and returned **P0 0 / P1 1 /
+P2 6**, with the zero-knowledge claim upheld. That pass also confirmed directly
+that the per-field secret absence is a real conditional mount returning `null`
+rather than a CSS or visibility trick, that the detail renderer's item-type
+`switch` is exhaustive so a new item type is a compile error rather than a
+silently unmasked field, and that the lock path clears state before its first
+`await` with no guard, confirmation, or early return. The outstanding P1 and P2
+items are queued as TASK-0029.
+
+That re-review is evidence about the code. It does not retroactively create the
+missing review record, and it does not make the originally reviewed artifact
+identifiable.
+
+**Status is unchanged and deliberately so.** This section does not alter
+`Status: done`. Whether the status should change is a lifecycle decision that
+belongs to the TASK-0028 reviewer and the orchestrator, not to the agent
+recording the gap.
+
+Full findings, severities, evidence, and the list of what the audit confirmed
+sound are in
+`docs/coordination/reviews/2026-08-01-multi-agent-integrity-audit.md`.

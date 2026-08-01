@@ -585,3 +585,23 @@ bundle clipboard, recovery-copy wording/behavior, wordlist delimiter, search,
 service-worker delivery, or schema-driven item types into that decision. No
 connected CI run, deployment, Stage 5 approval, or permission to use real
 credentials is claimed.
+
+## User-requested stop after TASK-0032 closure — 2026-08-01T21:09:09Z
+
+The user requested that work stop after the completed UI/UX checkpoint.
+TASK-0032 remains durably `done` at closure commit `a5916cb`; exact product
+remediation is `783ba59` and its independent confirmation is recorded in the
+task. The working tree was clean and no task had `active` or `review` status at
+the stop request.
+
+A read-only ADR-0016 repository preflight had just begun and was interrupted.
+It produced no repository artifact, task claim, ADR file, implementation, or
+review verdict. No TASK-0033 or ADR-0016 filename is reserved by a task, and no
+source, test, dependency, protocol, persistence, crypto, recovery, metadata,
+network, or deployment file changed after TASK-0032 closure.
+
+If work resumes, the next safe action remains a fresh, repository-recorded
+ADR-0016 idle auto-lock preflight and proposal, followed by independent ADR
+review before implementation. Do not infer that idle auto-lock or the wider
+roadmap is complete. No connected CI run, deployment, Stage 5 approval, or
+permission to use real credentials is claimed.

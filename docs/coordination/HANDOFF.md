@@ -3,12 +3,12 @@
 Updated: 2026-08-01
 Branch: `main`
 Last committed checkpoint before Task 0024: `6d83747`
-Current checkpoint: TASK-0031 implementation commit `fb2f458` passed code and
-gate review but is not done. Independent review recorded one documentation P1
-in `e81fdd1`: this handoff had not recorded the internal worker protocol v2
-compatibility rule and still described TASK-0031 as unfiled. The appended
-TASK-0031 checkpoint at the end is the current resumption authority; historical
-queue statements remain evidence of earlier states, not current instructions.
+Current checkpoint: TASK-0031 is done. Implementation commit `fb2f458` passed
+code and gate review; review BLOCK `e81fdd1` identified one handoff P1;
+documentation remediation `dfc226b` received independent confirmation PASS with
+P0 0 / P1 0 / P2 0. The appended TASK-0031 closure at the end is the current
+resumption authority; historical queue statements remain evidence of earlier
+states, not current instructions.
 
 This is a navigation checkpoint, not a substitute for authoritative task files
 or accepted ADRs. Verify it against the repository before acting.
@@ -449,3 +449,21 @@ the exact remediation commit and close the task only if the handoff now matches
 the task and repository. Do not start ADR-0016, idle auto-lock, or any other new
 task before TASK-0031 closes. No connected CI run, deployment, Stage 5 approval,
 or permission to use real credentials is claimed.
+
+## TASK-0031 closure — 2026-08-01T11:51:06Z
+
+The same independent reviewer confirmed exact documentation remediation commit
+`dfc226b` and returned **PASS — P0 0 / P1 0 / P2 0**. TASK-0031 is `done`.
+The confirmation verified that `dfc226b` changes only this handoff and the task
+record, that the opening and appended checkpoint accurately describe protocol
+v2 and the evidence/non-claims, and that `git diff --check` passes. It did not
+repeat implementation, browser, or production gates because the remediation is
+documentation-only; those gates were already independently run against exact
+implementation commit `fb2f458`.
+
+The next safe direction is the already queued ADR-0016 idle auto-lock decision,
+starting with an independent preflight and ADR proposal/review before any
+implementation. Do not infer that idle auto-lock is implemented, that Stage 2
+or Stage 5 is complete, or that real credentials may be used. The separate
+wordlist-delimiter and recovery-copy findings still require their own ADR
+decisions and must not be bundled into idle auto-lock.

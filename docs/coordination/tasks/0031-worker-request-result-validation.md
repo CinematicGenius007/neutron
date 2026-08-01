@@ -1,6 +1,6 @@
 # TASK 0031 — Worker request/result validation
 
-Status: review
+Status: done
 Owner: unassigned (handoff remediated by `/root`)
 Claimed: 2026-08-01T11:29:12Z
 Worktree/branch: shared-worktree (`main`)
@@ -80,7 +80,7 @@ field rather than attempting migration.
       dependencies are unchanged; fixtures remain synthetic.
 - [x] The internal worker protocol is v2; v1 messages fail closed, and the
       same-build compatibility rule is recorded in the handoff.
-- [ ] A separate reviewer attacks an identifiable committed artifact before
+- [x] A separate reviewer attacks an identifiable committed artifact before
       closure.
 
 ## Verification
@@ -128,6 +128,9 @@ git diff --check
   current BLOCK, and next safe action. No product code changed. Returned the
   task to the same independent reviewer for confirmation of the exact committed
   remediation.
+- 2026-08-01T11:51:06Z — Independent confirmation of exact documentation
+  remediation commit `dfc226b` returned PASS with P0 0 / P1 0 / P2 0. Closed
+  TASK-0031.
 
 ## Handoff
 
@@ -139,8 +142,8 @@ v2; v1 messages and mixed-build traffic fail closed, and the production conflict
 probe uses v2.
 
 No persisted/network format, crypto operation, dependency, UI behavior, or
-server-visible metadata changed. Independent review of the committed candidate
-is still required before closure.
+server-visible metadata changed. Independent review and documentation-only
+remediation confirmation are complete.
 
 ## Review
 
@@ -220,3 +223,50 @@ git diff --check
 
 The review made no product-code edits. Its only working-tree change is this
 task-file review record and lifecycle metadata.
+
+### 2026-08-01T11:51:06Z — remediation confirmation on exact commit `dfc226b`
+
+Reviewer: `/root/task_0031_review` (same independent reviewer; did not implement
+the candidate or remediation)
+
+Verdict: **PASS — P0 0 / P1 0 / P2 0**.
+
+The documentation-only remedy fully discharges the prior P1. The handoff
+opening names implementation `fb2f458` and the BLOCK record `e81fdd1`, says the
+task is not yet done at the reviewed remediation commit, and directs readers to
+the appended current checkpoint instead of treating old queue sections as live
+instructions. The appended checkpoint accurately records:
+
+- the atomic same-build protocol-v2 rule;
+- unconditional protocol-v1 and mixed-v1/v2 rejection with no shim or data
+  migration;
+- the implementation and independent-review commands actually run, including
+  the explicit statement that the reviewer did not repeat frozen install;
+- implementation commit `fb2f458`, committed BLOCK record `e81fdd1`, current
+  review status, and confirmation as the next safe action; and
+- explicit non-claims for connected CI, deployment, Stage 5 approval, and real
+  credentials.
+
+The older TASK-0028 through TASK-0030 sections remain unchanged historical
+records below the updated opening. Exact remediation commit `dfc226b` changes
+only `docs/coordination/HANDOFF.md` and this task file; no product, test, build,
+dependency, protocol implementation, crypto, persistence, or network path
+changed.
+
+Proportionate confirmation commands:
+
+```text
+git cat-file -t fb2f458
+git cat-file -t e81fdd1
+  pass; both resolve to commits and are ancestors of dfc226b
+git diff --name-status dfc226b^ dfc226b
+  pass; HANDOFF.md and TASK-0031 only
+git diff --check dfc226b^ dfc226b
+  pass
+rg <TASK-0031 checkpoint and compatibility claims> docs/coordination/HANDOFF.md
+  pass; opening and appended checkpoint contain every required claim
+```
+
+No implementation, unit, browser, or production gate was repeated for this
+confirmation because `dfc226b` is documentation-only and the preceding review
+already ran those gates against exact implementation commit `fb2f458`.

@@ -1,10 +1,10 @@
 # ADR 0014 — Passphrase generation policy
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-08-01
 - Owners: `/root`
 - Supersedes:
-- Superseded by:
+- Superseded by: ADR 0015
 
 ## Context
 

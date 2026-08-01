@@ -2,176 +2,174 @@
 
 Updated: 2026-08-01
 Branch: `main`
-Implementation tip: this handoff commit, above `d94b925`
-Last independently reviewed and closed checkpoint: Task 0025, PASS at `d94b925`
+Implementation tip: this handoff/acceptance commit, above `8055962`
+Last executable checkpoint: Task 0026, independently reviewed at `0fac69c`
 
 This is a navigation checkpoint, not a substitute for authoritative task files
 or accepted ADRs. Verify it against the repository before acting.
 
 ## Resume here
 
-1. Read `AGENTS.md` and every document it requires, in order. `CLAUDE.md` adds
-   practical operating notes and does not override `AGENTS.md`.
-2. Run `git status --short` and `git log -8 --oneline`. Expect a clean `main`
-   with this handoff commit on top of `d94b925`, above `921a963`, `bbe63c3`,
-   `378a71b`, `b48653d`, `de69215`, and `0f6d9f8`.
-3. Read accepted ADR 0014, the plan review at
-   `docs/coordination/reviews/2026-08-01-stage-2-plan-review.md`, and Tasks 0023
-   through 0026.
-4. **Task 0025 is `done`**, independently reviewed: BLOCK, then PASS at
-   `d94b925` with P0 0 and P1 0. Do not treat `pnpm test` as a passing gate
-   until Task 0026 lands.
+1. Read `AGENTS.md` and every document it requires, in order. `CLAUDE.md` contains
+   Claude-specific practical notes and cannot override `AGENTS.md`.
+2. Run `git status --short` and `git log -10 --oneline`. Expect clean `main` with
+   this commit above `8055962`, `df3f550`, `0fac69c`, `59a0c11`, and `d94b925`.
+3. Read accepted ADR 0015 together with superseded ADR 0014, the takeover review
+   at `docs/coordination/reviews/2026-08-01-adr-0014-takeover-review.md`, and
+   Tasks 0023 through 0027.
+4. Confirm Tasks 0025, 0026, and 0027 are `done`; Task 0023 is `ready` and
+   unclaimed; Task 0024 remains `proposed` behind it. No implementation task is
+   active at this checkpoint.
 5. Update this file before the next session stops, including if work is blocked
-   or still in review.
+   or under review.
 
-## Checkpoint outcome
+## Takeover review outcome
 
-Three things happened this session: a decision was accepted, a dead security
-control was found and repaired, and the Stage 2 remainder was replanned.
+The previous session made useful progress and did not wrongly implement the
+passphrase feature. Its Task 0025 product fix is sound: the vault-worker bundle
+boundary had silently never executed, and the repair now fails closed for
+worker/UI violations and relocation probes without changing emitted artifacts.
+This session independently reintroduced a worker-to-React violation, observed
+the expected build failure, reverted it, rebuilt successfully, and restored a
+clean tree.
 
-**ADR 0014 — passphrase generation policy — accepted** at `de69215` after an
-independent adversarial review returned BLOCK with P0 0, P1 5, P2 9. Every
-finding was remediated before acceptance. Two were substantive rather than
-editorial:
+The plan and policy record did contain material gaps. A fresh named audit of ADR
+0014 at `59a0c11` returned BLOCK with P0 0, P1 4, P2 5:
 
-- The byte-assembly rule permitted a sliding-window implementation in which one
-  byte served as the low byte of one draw and the high byte of the next, making
-  consecutive word choices dependent and falsifying the entropy claim. No test
-  in the required set would have caught it. Replaced with a disjoint-pair
-  discipline plus a test that pins the index sequence for a fixed byte stream.
-- The required CC BY 4.0 attribution would not have survived the build. Verified
-  against this repository's own pipeline: React's upstream `@license` banner
-  does not reach the emitted bundle. Attribution is now an exported string
-  rendered in the UI, plus `docs/third-party-notices.md`, plus a production-gate
-  assertion.
+- selected-index collections were forbidden, but selected-word collections with
+  the same secret-reconstruction authority were not;
+- Task 0023 reduced the minification-surviving attribution contract to an
+  insufficient source header and omitted the full production assertion;
+- Task 0023 omitted the gate-restoring Task 0026 dependency;
+- the prior ADR reviewer identity was not retained;
+- exhaustion probability and expected output-length text were slightly wrong;
+- the Stage 2 recovery-unlock plan contradicted the roadmap;
+- pre-implementation documents claimed nonexistent exports/tests/rendering; and
+- Task 0025's block metadata was incomplete.
 
-Provenance is recorded honestly: EFF publishes no checksum, so the pinned
-upstream digest attests to one TLS retrieval on 2026-08-01, not to upstream
-authenticity, and the CC BY 4.0 reading depends on the list being original EFF
-material, evidenced by EFF's own announcement rather than by an explicit grant.
+Task 0027 and successor ADR 0015 remediate every finding. Independent re-review
+of `8055962` passed with P0 0, P1 0, P2 0. ADR 0015 is accepted and ADR 0014 is
+retained as superseded history rather than silently rewritten. Task 0023 is now
+ready but has no product implementation.
 
-**Task 0025 — vault-worker bundle boundary — done, independently reviewed.** The
-worker half of the build-time boundary check in `apps/web/vite.config.ts` had
-never executed. Vite bundles a `?worker&url` import in its own build and emits
-it into the parent as an asset, while the plugin only inspected outputs of type
-`chunk`, so the lookup always missed and the branch was skipped. ADR 0008 and
-Task 0018 both treated that assertion as enforced. The independent reviewer
-confirmed the defect by reproduction: the same violation builds cleanly at
-`378a71b` and fails at HEAD.
+The prior session also wrote several Asia/Kolkata wall times with a `Z` suffix.
+Task 0026 records the uncertainty instead of inventing UTC minutes; Task 0025's
+recoverable times were converted using the repository timezone and its exact
+creation commit. Continue using `date -u` for lifecycle timestamps.
 
-A second instance of the same defect class was then found — predicates matched
-directory-anchored substrings, so a worker-only module moved one directory
-deeper stopped being matched — and fixed at `921a963` and `d94b925`.
+## Task 0026 — trustworthy root test gate
 
-**Stage 2 was replanned** in `docs/coordination/reviews/2026-08-01-stage-2-plan-review.md`,
-which records the comparison the previous handoff did not make, and adds a
-functional UI remediation task that no previous task owned.
+Task 0026 is done and independently reviewed.
+
+- Implementation: `0fac69c test(crypto): give provider bounds check real margin`.
+- Closure: `df3f550 docs(coordination): close provider bounds timeout repair`.
+- Review: PASS, P0 0, P1 0, P2 1; the timestamp-only P2 was remediated.
+
+The only executable change raises the explicit timeout on
+`accepts exact upper bounds and rejects wrong associated data` from 30 to 60
+seconds. All 4,096-byte HKDF inputs, 8,160-byte output, 16,777,216-byte random/
+AEAD inputs, 16,777,232-byte ciphertext, assertions, and provider source remain
+byte-identical. No skip, retry, global timeout, worker-count, pool, or scheduling
+change exists.
+
+Ten pre-change and ten corrected post-change full parallel gates passed all 94
+tests locally. Post-change target maximum was 23.264 seconds, leaving 36.736
+seconds local margin; the conservative margin over the previously observed 32.5
+second contended run is 27.5 seconds. Successful-run median wall clock remained
+22 seconds. Three independent reviewer gates also passed. Actual CI timing is
+unknown because this checkout has no Git remote or observable CI run; do not
+present local M5 measurements as CI evidence.
+
+During implementation, a context-free patch initially changed the earlier
+Argon2id test's identical timeout literal. Final diff inspection caught and
+reverted it before commit; the invalid measurements were discarded and the
+post-change series was repeated on the correct line. This is retained because it
+demonstrates why exact diff review is a gate.
 
 ## Verification actually run
 
-At `d94b925`, run serially:
+Current takeover and Task 0026 work passed:
 
 ```text
 pnpm install --frozen-lockfile               # already up to date
 pnpm typecheck                               # pass
 pnpm lint                                    # 106 files, pass
 pnpm format:check                            # 106 files, pass
-pnpm test                                    # 94 tests; see the caveat below
+pnpm test                                    # 11 files, 94 tests, pass
 pnpm build                                   # pass
-pnpm --filter @neutron/web test:browser      # 23 Chromium + 3 engine probes, pass
-pnpm --filter @neutron/web test:production   # emitted exact-CSP flow, pass
 git diff --check                             # pass
 ```
 
-Emitted artifacts are byte-identical to the pre-change build: `index-BFSv1aBR.js`
-237,586 bytes, `vault-worker-entry-CR0SpbvK.js` 596,854 bytes,
-`index-Dz9C09xS.css` 4,759 bytes, 7 files.
-
-**`pnpm test` is not a reliable gate right now.** The implementer first recorded
-its failure as machine load; the independent review refuted that by measurement.
-`packages/crypto/test/provider.test.ts > accepts exact upper bounds and rejects
-wrong associated data` runs 21.58 s isolated but 32.5 s inside the ordinary
-parallel gate, against a 30 s timeout, and fails about one run in five on an
-idle machine. Task 0026 owns it. Until that lands, a green `pnpm test` is weak
-evidence and a red one must be diagnosed rather than retried.
-
-Boundary control proven by deliberate violation, reverted immediately and not
-committed:
-
-```text
-worker imports UI      -> vault worker build contains forbidden module: …/react.production.js
-window imports storage -> window build contains forbidden module: …/src/storage/local-vault.ts
-```
+Task 0026 additionally has twenty recorded local full-gate measurements and
+three independent reviewer runs. The takeover independently reproduced the EFF
+source/derived digests and all list invariants. Task 0025's prior web gates remain
+23 Chromium tests, three Chromium/Firefox/WebKit TOTP probes, and the emitted
+exact-CSP production flow; no web executable changed in this takeover.
 
 ## Deliberately unfinished
 
-- Task 0023, the passphrase generator, is `proposed` and not started. Its two new
-  modules were drafted but deliberately not committed, because ADR 0014's
-  acceptance and Task 0025's shared build file had to settle first.
-- Task 0024, functional UI remediation, is `proposed` with 14 enumerated defects
-  and runs after 0023 so that the usability pass covers the passphrase UI.
-- Task 0026, the provider upper-bounds test timeout, is `ready` and unclaimed.
-  It was created misdiagnosed — named for Argon2id, which the failing test never
-  calls — and rewritten after the reviewer measured per-test durations. Its real
-  cost is a 16 MiB `randomBytes` plus a 16 MiB AEAD round trip, and the 30 second
-  limit is an explicit literal at `packages/crypto/test/provider.test.ts:248`,
-  not a framework default. Do not make it faster by shrinking those buffers;
-  they are the upper bounds the test exists to prove.
+- Task 0023, wordlist passphrase generation, is ready and unclaimed. No wordlist
+  or generator module is committed. It must implement superseding ADR 0015 and
+  the unchanged portions of ADR 0014.
+- Task 0024, functional UI remediation, remains proposed behind Task 0023. It
+  owns the 14 enumerated functional defects and must not be bundled into 0023.
 - Stage 2 still lacks bounded encrypted local search and the service-worker
-  install/update/rollback state machine. Neither is preflighted. Bounded search
-  needs an ADR that either changes a persisted format or explicitly defers index
-  shards; `INDEX_PAYLOAD 0x12` is reserved in the envelope but unused.
-- The roadmap does **not** list offline recovery unlock as Stage 2 work, contrary
-  to what the previous handoff said. It is also blocked: its governing ADR
-  filename is reserved by the blocked Task 0009. Do not start it.
-- Idle auto-lock and clipboard copy are deliberately deferred. Both are security
-  decisions needing their own ADRs, not usability tweaks.
-- Clipboard/copy, QR generation and scanning, `otpauth://` parsing, adjacent-step
-  TOTP validation, and clock synchronization remain absent.
-- Browser, OS, password-manager, and extension handling of plaintext remains part
-  of the documented client TCB. Neutron cannot prove erasure of immutable strings.
+  install/update/rollback state machine. Neither is preflighted. Search requires
+  an ADR for index-shard leakage/persisted-format policy.
+- Recovery unlock is not an outstanding Stage 2 roadmap item and is separately
+  blocked by Task 0009. Do not start it from an older handoff claim.
+- Idle auto-lock and clipboard copy remain ADR-worthy security decisions, not UI
+  tweaks. QR handling, `otpauth://` import, adjacent-step TOTP validation, and
+  clock synchronization also remain absent.
 - Tasks 0004, 0006, 0008, and 0009 remain blocked; Task 0010 remains proposed.
-- Do not use real credentials before the Stage 5 dogfood gate.
+- There is no deployment, connected CI evidence, or production release. Do not
+  use real credentials before the Stage 5 dogfood gate.
 
 ## Next safe direction
 
-Task 0026 first: it is small and it restores a trustworthy `pnpm test` gate,
-which everything after it depends on. Then Task 0023, then Task 0024.
+Claim only Task 0023. Its implementation must use the digest-pinned 7,776-word
+EFF list, disjoint big-endian pairs with cutoff 62,208, and worker-owned CSPRNG.
+It may retain only the actual output prefix plus one current numeric draw/index;
+no selected-index or selected-word array, tuple, object, map, set, typed array,
+encoded accumulator, closure collection, or join-later design is permitted.
+
+The complete EFF/CC notice must be exported, rendered to the user, and proven in
+emitted production with creator, `CC-BY-4.0`, license URI, source, retrieval
+date, modification statement, and disclaimer reference. A source header alone
+does not count. Preserve the existing triple validation, lock priority,
+current-editor invalidation, no-auto-save rule, exact leakage scans, canonical
+digest check, and before/after bundle measurements.
 
 Suggested prompt for the next agent:
 
-> Resume Neutron from `docs/coordination/HANDOFF.md`. Read every document
-> required by `AGENTS.md`, then verify `git status` is clean at `d94b925` and
-> that the referenced commits exist. Task 0025 is closed; do not reopen it.
-> First claim Task 0026 and give the provider upper-bounds test real margin
-> without shrinking its 16 MiB inputs, weakening an assertion, skipping it, or
-> adding retry-on-failure; prove it with ten consecutive green full-gate runs
-> and record per-test durations as evidence. Then claim Task 0023 and implement the ADR 0014
-> passphrase generator exactly as specified — digest-pinned wordlist, disjoint
-> big-endian pair sampling with cutoff 62208, no index or word array anywhere,
-> attribution as an exported string rendered in the UI, and the emitted-production
-> flow recomputing the canonical digest from the built worker. Run every gate,
-> obtain separate adversarial review, remediate every P0/P1, commit a clean
-> checkpoint, and update this handoff. Do not bundle Task 0024, bounded local
-> search, recovery unlock, clipboard, TOTP import, service worker, sync, server,
-> or deployment work.
+> Resume Neutron from `docs/coordination/HANDOFF.md`. Read every document required
+> by `AGENTS.md`; verify clean `main` and the commits named in the handoff. Read
+> superseded ADR 0014 together with governing accepted ADR 0015 and Task 0023.
+> Assign a separate read-only preflight before claiming Task 0023, then claim only
+> its exact allowed paths. Implement the digest-pinned EFF passphrase generator
+> through the existing unlocked vault worker using disjoint 16-bit pairs and
+> cutoff 62208. Construct output incrementally and retain no selected-index or
+> selected-word collection of any representation. Export and render the complete
+> attribution notice and prove it plus the canonical list digest in emitted
+> production. Preserve triple validation, lock priority, stale-result suppression,
+> no auto-save, leakage clearing, and exact bundle measurements. Run every root,
+> browser, three-engine, and emitted-production gate; obtain independent
+> adversarial review; remediate every P0/P1; commit a clean checkpoint; and update
+> this handoff. Do not bundle Task 0024, search, recovery, clipboard, TOTP import,
+> service worker, sync, server, or deployment work.
 
 ## Manual UI smoke test
 
-From the repository root, run `pnpm --filter @neutron/web dev`, open the printed
-local URL, and use a fresh browser profile/origin. Enrollment, recovery-kit
-confirmation, lock/unlock, item CRUD, password generation, and TOTP display are
-available for synthetic test data. The current dev build is not a dogfood or
-production security release; do not enter real credentials.
+Run `pnpm --filter @neutron/web dev` from the repository root and use a fresh
+browser profile/origin with synthetic data only. Enrollment, recovery-kit
+confirmation, lock/unlock, item CRUD, random-character password generation, and
+TOTP display are available. Passphrase generation is not implemented yet. This
+is not a dogfood or production security release.
 
 ## Mandatory next-session stop protocol
 
 Before the next session ends, record repository-verifiable task/review status,
 exact commits, dirty paths, commands actually run and results, unresolved
 findings, next safe action, and explicit non-goals here. Prefer a clean committed
-checkpoint. Never use the handoff to self-approve a security-sensitive task.
-
-One process note worth carrying forward: review separation was previously
-attested only by prose, since every commit shares one Git author and closed
-tasks clear `Owner`. Task 0025 records both implementer and reviewer identities
-and retains them. Keep doing that.
+checkpoint. Never use the handoff to self-approve security-sensitive work, and
+retain implementer/reviewer identities in the task record.

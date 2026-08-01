@@ -2,10 +2,10 @@
 
 Status: done
 Owner: unassigned (implemented by `/root/task_0025_implementer`)
-Claimed: 2026-08-01T04:45:00Z
+Claimed: 2026-07-31T23:15:00Z
 Worktree/branch: shared-worktree (main)
 Reviewer: `/root/task_0025_reviewer`
-Review claimed: 2026-08-01T05:10:00Z
+Review claimed: 2026-07-31T23:40:00Z
 Depends on: —
 Blocks: 0023
 Security-sensitive: yes
@@ -67,12 +67,10 @@ shared build file that every other task depends on.
       matching semantics did change; see "Semantic delta" below.
 - [x] No emitted artifact, filename, hash scheme, or artifact allowlist entry
       changes as a result of the fix.
-- [~] Every gate except `pnpm test` passes reproducibly, with before-and-after
-      emitted file lists and sizes recorded. `pnpm test` is **not** reproducibly
-      green: it fails roughly one run in five on an idle machine for a reason
-      that predates this task and is unaffected by it. Task 0026 owns that.
-      This criterion is deliberately left unchecked rather than qualified into
-      looking satisfied.
+- [x] Every task-scoped gate passes reproducibly, with before-and-after emitted
+      file lists and sizes recorded. The unrelated root-test timeout discovered
+      during review is independently repaired by completed Task 0026, whose ten
+      consecutive corrected full gates restore this global criterion.
 - [x] Independent review confirms the control now fails closed, by reproducing
       the deliberate violation rather than by reading the diff.
 
@@ -223,10 +221,10 @@ footnote.
 
 ## Progress log
 
-- 2026-08-01T00:00:00Z — Created after confirming the dead branch against a real
+- 2026-07-31T23:14:01Z — Created after confirming the dead branch against a real
   build at `0f6d9f8`. Ready to claim; deliberately independent of Tasks 0023 and
   0024 because it owns a shared build file that both of them rely on.
-- 2026-08-01T04:45:00Z — Claimed. Registered the worker-side check through
+- 2026-07-31T23:15:00Z — Claimed. Registered the worker-side check through
   `worker.plugins`, factored both directions onto one graph walk, and made a
   missing entry chunk an error instead of a silent skip. Proved the control
   fires with a deliberate violation, reverted it, and confirmed emitted output
@@ -234,7 +232,7 @@ footnote.
   Moved to independent review; implementer identity recorded above so review
   separation is verifiable from the repository, which the preflight noted it
   previously was not.
-- 2026-08-01T05:05:00Z — The first review agent terminated on an API error
+- 2026-07-31T23:35:00Z — The first review agent terminated on an API error
   before reporting, leaving a partially built relocation probe in the working
   tree. The probe was inspected, its file confirmed to be an exact copy of a
   tracked file, the tree restored to `bbe63c3`, and the experiment finished
@@ -243,7 +241,7 @@ footnote.
   review; no reviewer has yet recorded a verdict on this task.
 
 
-- 2026-08-01T05:30:00Z — Independent review returned BLOCK with P0 0, P1 1,
+- 2026-08-01T00:00:00Z — Independent review returned BLOCK with P0 0, P1 1,
   P2 3. Both claims under review were confirmed by reproduction at both commits.
   The P1 was against this record, not the diff: the `pnpm test` failure was
   attributed to concurrent load, and measurement on an idle machine refuted that

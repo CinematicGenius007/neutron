@@ -1,6 +1,6 @@
 # TASK 0027 — Passphrase policy audit remediation
 
-Status: review
+Status: done
 Owner: unassigned (implemented by `/root`)
 Claimed: 2026-08-01T00:45:11Z
 Worktree/branch: shared-worktree (main)
@@ -52,7 +52,7 @@ closes the selected-word collection channel before passphrase product code begin
       and pre-implementation documents use future rather than false present tense.
 - [x] The takeover review records the independent reviewer identity and every
       P1/P2 disposition using repository-verifiable evidence.
-- [ ] Independent adversarial review passes before ADR 0015 is accepted and ADR
+- [x] Independent adversarial review passes before ADR 0015 is accepted and ADR
       0014 is marked superseded.
 - [x] Formatting and diff checks pass with no non-document change.
 
@@ -66,11 +66,22 @@ closes the selected-word collection channel before passphrase product code begin
   contradiction and historical block metadata, made pre-implementation notice
   language honest, and retained the named takeover audit. Formatting and diff
   checks pass with documentation-only changes; moved to independent re-review.
+- 2026-08-01T00:50:23Z — Independent re-review passed commit `8055962` with P0
+  0, P1 0, P2 0. Accepted ADR 0015, marked ADR 0014 superseded, made Task 0023
+  ready and unclaimed, and corrected inherited timestamp suffixes using the
+  recorded Asia/Kolkata timezone and exact creation commit where recoverable.
+  Task closed without any product, test, dependency, or build change.
 
 ## Handoff
 
-Do not accept ADR 0015 or make Task 0023 ready without separate review.
+ADR 0015 is accepted and Task 0023 is ready but unclaimed. Its implementation
+must follow ADR 0014 plus the governing corrections in ADR 0015.
 
 ## Review
 
-Pending.
+Independent re-review by `/root/task_0022_reviewer` of commit `8055962`: PASS,
+P0 0, P1 0, P2 0. The reviewer recomputed the probability and mean-length
+corrections, attacked secret-equivalent collection representations, verified the
+complete attribution contract and every dependency/plan disposition, and
+confirmed documentation-only scope, formatting, and diff checks. The reviewer
+edited no file.

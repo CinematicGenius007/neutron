@@ -1,12 +1,12 @@
 # TASK 0023 — Wordlist-backed passphrase generator
 
-Status: proposed
+Status: ready
 Owner: unassigned
 Claimed: —
 Worktree/branch: —
 Reviewer: unassigned
 Review claimed: —
-Depends on: 0018, 0020, 0021, 0025, 0026; accepted ADR 0014 and proposed ADR 0015
+Depends on: 0018, 0020, 0021, 0025, 0026; accepted ADR 0015 (supersedes 0014)
 Blocks: Stage 2 generator completeness
 Security-sensitive: yes
 
@@ -124,10 +124,10 @@ sizes before and after, and any test retry with its exact cause.
 
 ## Progress log
 
-- 2026-08-01T00:00:00Z — Created after an independent read-only preflight of the
+- 2026-07-31T23:14:01Z — Created after an independent read-only preflight of the
   Task 0022 checkpoint and drafted alongside ADR 0014. Not claimable until
   ADR 0014 is independently reviewed and accepted.
-- 2026-08-01T00:00:00Z — ADR 0014 independently reviewed: BLOCK with P0 0, P1 5,
+- 2026-07-31T23:14:01Z — ADR 0014 independently reviewed: BLOCK with P0 0, P1 5,
   P2 9. All findings remediated and the ADR accepted. Two P1s were substantive
   rather than editorial: the byte-pair assembly rule permitted an
   entropy-reducing sliding-window implementation, and the required attribution
@@ -137,6 +137,9 @@ sizes before and after, and any test retry with its exact cause.
   P2 5. Task 0026 is now done and an explicit dependency. Proposed ADR 0015 must
   close the selected-word collection channel and attribution mismatch, receive
   independent review, and be accepted before this task may become ready.
+- 2026-08-01T00:50:23Z — ADR 0015 independently passed with P0 0, P1 0, P2 0
+  and was accepted as the governing successor to ADR 0014. All task dependencies
+  are done and its acceptance criteria are testable; moved to ready, unclaimed.
 
 ## Handoff
 

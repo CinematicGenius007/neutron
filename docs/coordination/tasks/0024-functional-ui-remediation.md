@@ -175,7 +175,7 @@ checks and any retry with its cause.
 
 ## Progress log
 
-- 2026-08-01T00:00:00Z — Created from the Stage 2 forward-plan review. Not
+- 2026-07-31T23:14:01Z — Created from the Stage 2 forward-plan review. Not
   claimable until Task 0023 is done, so that the usability pass covers the
   passphrase UI instead of being invalidated by it.
 

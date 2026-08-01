@@ -1,9 +1,9 @@
 # ADR 0015 — Passphrase policy audit corrections
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-08-01
 - Owners: `/root`
-- Supersedes: ADR 0014 when accepted
+- Supersedes: ADR 0014
 - Superseded by:
 
 ## Context

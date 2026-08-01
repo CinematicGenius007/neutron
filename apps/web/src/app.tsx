@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { type BrowserSupport, detectBrowserSupport } from "./browser-support.js";
 import { ItemEditor } from "./item-editor.js";
 import type { LocalVaultMetadata } from "./local-vault.js";
+import type { PassphraseGeneratorOptionsV1 } from "./passphrase-generator.js";
 import type { PasswordGeneratorOptionsV1 } from "./password-generator.js";
 import { isTotpResultFresh } from "./totp.js";
 import {
@@ -37,6 +38,7 @@ export interface VaultBroker {
     vaultId: string,
     record: VaultWorkerItemRecord,
   ) => Promise<VaultWorkerTotpCode>;
+  readonly generatePassphrase?: (options: PassphraseGeneratorOptionsV1) => Promise<string>;
   readonly generatePassword?: (options: PasswordGeneratorOptionsV1) => Promise<string>;
 }
 
@@ -506,6 +508,13 @@ export function VaultApp({
     return generate.call(active, options);
   }
 
+  async function generateEditorPassphrase(options: PassphraseGeneratorOptionsV1): Promise<string> {
+    const active = currentBroker();
+    const generate = active.generatePassphrase;
+    if (generate === undefined) throw new Error("generator unavailable");
+    return generate.call(active, options);
+  }
+
   async function computeSelectedTotp(record: VaultWorkerItemRecord): Promise<VaultWorkerTotpCode> {
     const session = metadata;
     const active = currentBroker();
@@ -801,6 +810,7 @@ export function VaultApp({
                     setEditor(undefined);
                     setError(undefined);
                   }}
+                  onGeneratePassphrase={generateEditorPassphrase}
                   onGeneratePassword={generateEditorPassword}
                   {...(editor.kind === "edit" ? { onDelete: deleteEditorItem } : {})}
                   onSave={saveEditorItem}

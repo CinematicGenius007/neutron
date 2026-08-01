@@ -7,6 +7,7 @@ import {
   type PendingOfflineEnrollment,
   unlockOfflineVault,
 } from "./local-vault.js";
+import { generatePassphrase, validateGeneratedPassphrase } from "./passphrase-generator.js";
 import { generatePassword, validateGeneratedPassword } from "./password-generator.js";
 import { computeTotp, validateTotpComputation } from "./totp.js";
 import {
@@ -199,6 +200,14 @@ export class VaultWorkerRuntime {
         const password = generatePassword(provider, input);
         validateGeneratedPassword(password, input);
         return { kind: "generated-password", password };
+      }
+      case "generate-passphrase": {
+        this.#requireSession();
+        const provider = this.#provider;
+        if (provider === undefined) throw new Error("missing provider");
+        const passphrase = generatePassphrase(provider, input);
+        validateGeneratedPassphrase(passphrase, input);
+        return { kind: "generated-passphrase", passphrase };
       }
       case "create-item": {
         const item = await this.#requireSession().createItem(input.vaultId, input.item);

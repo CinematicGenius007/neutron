@@ -2,6 +2,7 @@ import { createLibsodiumProvider } from "@neutron/crypto";
 import { MemoryEncryptedRecordRepository, type VaultItem } from "@neutron/vault-domain";
 import { describe, expect, it } from "vitest";
 import { beginOfflineEnrollment } from "../src/local-vault.js";
+import { DEFAULT_PASSPHRASE_GENERATOR_OPTIONS } from "../src/passphrase-generator.js";
 import { DEFAULT_PASSWORD_GENERATOR_OPTIONS } from "../src/password-generator.js";
 import {
   VaultWorkerClient,
@@ -35,6 +36,8 @@ const totpItem: VaultItem = {
   digits: 8,
   period: 30,
 };
+
+const validPassphrase = "abacus.abdomen.abdominal.abide.abiding.ability.ablaze.abnormal";
 
 function request(operation: string, input: unknown = {}) {
   return { protocol: 1, requestId: "1", sessionEpoch: "0", operation, input };
@@ -211,6 +214,10 @@ describe("vault worker protocol", () => {
         request("generate-password", { ...DEFAULT_PASSWORD_GENERATOR_OPTIONS, extra: true }),
       ),
     ).toThrow(VaultWorkerProtocolFailure);
+    for (const input of [{ words: 6 }, { words: 25 }, { words: 8, extra: true }])
+      expect(() => parseVaultWorkerRequest(request("generate-passphrase", input))).toThrow(
+        VaultWorkerProtocolFailure,
+      );
     expect(() =>
       parseVaultWorkerResponse({
         protocol: 1,
@@ -221,6 +228,20 @@ describe("vault worker protocol", () => {
         result: { kind: "generated-password", password: "a".repeat(15) },
       }),
     ).toThrow(VaultWorkerProtocolFailure);
+    for (const passphrase of [
+      "abacus.abdomen.abdominal.abide.abiding.ability.not-a-word.abnormal",
+      "abacus..abdominal.abide.abiding.ability.ablaze.abnormal",
+    ])
+      expect(() =>
+        parseVaultWorkerResponse({
+          protocol: 1,
+          requestId: "1",
+          sessionEpoch: "0",
+          operation: "generate-passphrase",
+          ok: true,
+          result: { kind: "generated-passphrase", passphrase },
+        }),
+      ).toThrow(VaultWorkerProtocolFailure);
     const totpResponse = {
       protocol: 1,
       requestId: "1",
@@ -467,6 +488,10 @@ describe("vault worker boundary", () => {
     const generated = await client.generatePassword(DEFAULT_PASSWORD_GENERATOR_OPTIONS);
     expect(generated).toHaveLength(20);
     expect(generated).toMatch(/^[A-Za-z0-9!@#$%^&*()\-_=+[\]{};:,.?]+$/);
+    const generatedPassphrase = await client.generatePassphrase(
+      DEFAULT_PASSPHRASE_GENERATOR_OPTIONS,
+    );
+    expect(generatedPassphrase.split(".")).toHaveLength(8);
     const vaultId = metadata.vaults[0]?.id as string;
     const created = await client.createItem(vaultId, login);
     expect(created).toMatchObject({ generation: "1", keyVersion: 1 });
@@ -508,6 +533,9 @@ describe("vault worker boundary", () => {
         code: "locked",
       },
     );
+    await expect(
+      client.generatePassphrase(DEFAULT_PASSPHRASE_GENERATOR_OPTIONS),
+    ).rejects.toMatchObject({ code: "locked" });
     const recoveryKit = await client.beginEnrollment("correct horse battery staple");
     await expect(client.generatePassword(DEFAULT_PASSWORD_GENERATOR_OPTIONS)).rejects.toMatchObject(
       {
@@ -517,6 +545,9 @@ describe("vault worker boundary", () => {
     await client.confirmEnrollment(recoveryKit);
     await expect(client.generatePassword(DEFAULT_PASSWORD_GENERATOR_OPTIONS)).resolves.toHaveLength(
       20,
+    );
+    await expect(client.generatePassphrase(DEFAULT_PASSPHRASE_GENERATOR_OPTIONS)).resolves.toMatch(
+      /^(?:[a-z-]+\.){7}[a-z-]+$/,
     );
     await client.lock();
   });
@@ -723,6 +754,53 @@ describe("vault worker boundary", () => {
     expect(terminated).toBe(true);
   });
 
+  it("fails closed on request-specific passphrase forgeries, mutation, and cross-operation results", async () => {
+    for (const result of [
+      {
+        kind: "generated-passphrase",
+        passphrase: validPassphrase.replace("abnormal", "not-a-word"),
+      },
+      {
+        kind: "generated-passphrase",
+        passphrase: validPassphrase.split(".").slice(0, 7).join("."),
+      },
+      { kind: "generated-password", password: "a".repeat(20) },
+    ]) {
+      const sent: unknown[] = [];
+      let terminated = false;
+      const worker: VaultWorkerLike = {
+        onerror: null,
+        onmessage: null,
+        onmessageerror: null,
+        postMessage(message) {
+          sent.push(message);
+        },
+        terminate() {
+          terminated = true;
+        },
+      };
+      const client = new VaultWorkerClient(worker);
+      const options = { words: 8 };
+      const generating = client.generatePassphrase(options);
+      options.words = 7;
+      expect(sent[0]).toMatchObject({ input: { words: 8 } });
+      worker.onmessage?.(
+        new MessageEvent("message", {
+          data: {
+            protocol: 1,
+            requestId: "1",
+            sessionEpoch: "0",
+            operation: "generate-passphrase",
+            ok: true,
+            result,
+          },
+        }),
+      );
+      await expect(generating).rejects.toMatchObject({ code: "invalid-worker-response" });
+      expect(terminated).toBe(true);
+    }
+  });
+
   it("fails closed on a forged response and rejects every outstanding request", async () => {
     const worker: VaultWorkerLike = {
       onerror: null,
@@ -912,10 +990,10 @@ describe("vault worker boundary", () => {
       },
     };
     const client = new VaultWorkerClient(worker);
-    const state = client.state();
-    const rejectedState = expect(state).rejects.toMatchObject({ code: "locked" });
+    const generation = client.generatePassphrase(DEFAULT_PASSPHRASE_GENERATOR_OPTIONS);
+    const rejectedGeneration = expect(generation).rejects.toMatchObject({ code: "locked" });
     const locking = client.lock();
-    await rejectedState;
+    await rejectedGeneration;
     expect(sent).toHaveLength(2);
     worker.onmessage?.(
       new MessageEvent("message", {
@@ -923,9 +1001,9 @@ describe("vault worker boundary", () => {
           protocol: 1,
           requestId: "1",
           sessionEpoch: "0",
-          operation: "state",
+          operation: "generate-passphrase",
           ok: true,
-          result: { kind: "state", state: "locked" },
+          result: { kind: "generated-passphrase", passphrase: validPassphrase },
         },
       }),
     );

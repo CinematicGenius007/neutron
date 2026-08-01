@@ -1,6 +1,11 @@
 import type { VaultItem } from "@neutron/vault-domain";
 import type { LocalVaultMetadata } from "./local-vault.js";
 import {
+  type PassphraseGeneratorOptionsV1,
+  parsePassphraseGeneratorOptions,
+  validateGeneratedPassphrase,
+} from "./passphrase-generator.js";
+import {
   type PasswordGeneratorOptionsV1,
   parsePasswordGeneratorOptions,
   validateGeneratedPassword,
@@ -104,6 +109,7 @@ interface PendingRequest {
   readonly listCursor?: string;
   readonly listLimit?: number;
   readonly operation: VaultWorkerOperation;
+  readonly passphraseGeneratorOptions?: PassphraseGeneratorOptionsV1;
   readonly passwordGeneratorOptions?: PasswordGeneratorOptionsV1;
   readonly reject: (reason: VaultWorkerClientFailure) => void;
   readonly resolve: (value: unknown) => void;
@@ -123,6 +129,7 @@ interface ResponseExpectation {
   readonly expectedKeyVersion?: number;
   readonly listCursor?: string;
   readonly listLimit?: number;
+  readonly passphraseGeneratorOptions?: PassphraseGeneratorOptionsV1;
   readonly passwordGeneratorOptions?: PasswordGeneratorOptionsV1;
   readonly totpExpectation?: NonNullable<PendingRequest["totpExpectation"]>;
 }
@@ -138,6 +145,8 @@ function validateOperationResult(
   result: Record<string, unknown>,
   nowMilliseconds: number,
 ): void {
+  if (pending.passphraseGeneratorOptions !== undefined)
+    validateGeneratedPassphrase(result.passphrase, pending.passphraseGeneratorOptions);
   if (pending.passwordGeneratorOptions !== undefined)
     validateGeneratedPassword(result.password, pending.passwordGeneratorOptions);
   if (pending.totpExpectation !== undefined) {
@@ -416,6 +425,21 @@ export class VaultWorkerClient {
       }),
     );
     return result.password as string;
+  }
+
+  async generatePassphrase(optionsCandidate: PassphraseGeneratorOptionsV1): Promise<string> {
+    let options: PassphraseGeneratorOptionsV1;
+    try {
+      options = parsePassphraseGeneratorOptions(optionsCandidate);
+    } catch {
+      throw new VaultWorkerClientFailure("invalid-request");
+    }
+    const result = resultRecord(
+      await this.#call("generate-passphrase", { ...options }, "generated-passphrase", false, {
+        passphraseGeneratorOptions: options,
+      }),
+    );
+    return result.passphrase as string;
   }
 
   async createItem(vaultId: string, item: VaultItem): Promise<VaultWorkerRevision> {

@@ -1,5 +1,6 @@
 import type { VaultItem } from "@neutron/vault-domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DEFAULT_PASSPHRASE_GENERATOR_OPTIONS } from "../../src/passphrase-generator.js";
 import { DEFAULT_PASSWORD_GENERATOR_OPTIONS } from "../../src/password-generator.js";
 import { createVaultWorkerClient, type VaultWorkerClient } from "../../src/vault-worker-client.js";
 
@@ -102,6 +103,12 @@ describe("production vault module worker", () => {
       const generated = await first.generatePassword(DEFAULT_PASSWORD_GENERATOR_OPTIONS);
       expect(generated).toHaveLength(20);
       expect(await rawDatabaseText()).not.toContain(generated);
+      stage = "generate passphrase";
+      const generatedPassphrase = await first.generatePassphrase(
+        DEFAULT_PASSPHRASE_GENERATOR_OPTIONS,
+      );
+      expect(generatedPassphrase).toMatch(/^(?:[a-z-]+\.){7}[a-z-]+$/);
+      expect(await rawDatabaseText()).not.toContain(generatedPassphrase);
       const generatedItems = [
         { ...(items[0] as VaultItem & { type: "login" }), password: generated },
         ...items.slice(1),

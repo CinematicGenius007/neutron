@@ -3,6 +3,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { VaultApp, type VaultBroker } from "../../src/app.js";
+import type { PassphraseGeneratorOptionsV1 } from "../../src/passphrase-generator.js";
+import { EFF_LONG_WORDLIST_ATTRIBUTION } from "../../src/passphrase-wordlist.js";
 import type { PasswordGeneratorOptionsV1 } from "../../src/password-generator.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -12,6 +14,7 @@ const vaultId = "1".repeat(32);
 const itemId = "2".repeat(32);
 const secret = "synthetic-rendered-secret";
 const generatedSecret = "A0!a".repeat(5);
+const generatedPassphrase = "abacus.abdomen.abdominal.abide.abiding.ability.ablaze.abnormal";
 const browserTotp: Extract<VaultItem, { type: "totp" }> = {
   schemaVersion: 1,
   type: "totp",
@@ -39,6 +42,7 @@ class FakeBroker implements VaultBroker {
     vaultId: string;
   }> = [];
   readonly generateCalls: PasswordGeneratorOptionsV1[] = [];
+  readonly generatePassphraseCalls: PassphraseGeneratorOptionsV1[] = [];
   readonly updateCalls: Array<{
     generation: string;
     item: VaultItem;
@@ -161,6 +165,11 @@ class FakeBroker implements VaultBroker {
     return options.digits && !options.lowercase && !options.uppercase && !options.symbols
       ? "0".repeat(options.length)
       : generatedSecret;
+  }
+
+  async generatePassphrase(options: PassphraseGeneratorOptionsV1) {
+    this.generatePassphraseCalls.push(structuredClone(options));
+    return generatedPassphrase;
   }
 
   async lock() {
@@ -516,6 +525,39 @@ describe("React vault shell", () => {
       digits: true,
       symbols: false,
     });
+
+    await toggle("generator-mode-passphrase");
+    expect(value("passphrase-generator-words")).toBe("8");
+    expect(container?.textContent).toContain("103.4 bits");
+    expect(container?.textContent).toContain("not stronger than an equivalent random password");
+    expect(container?.textContent).toContain(EFF_LONG_WORDLIST_ATTRIBUTION);
+    await click("Generate passphrase");
+    expect(broker.generatePassphraseCalls).toEqual([{ words: 8 }]);
+    expect(value("item-password")).toBe(generatedPassphrase);
+    expect(broker.createCalls).toHaveLength(0);
+  });
+
+  it("suppresses a pending result when the generator mode changes", async () => {
+    let resolvePassphrase: ((value: string) => void) | undefined;
+    class DelayedPassphraseBroker extends FakeBroker {
+      override async generatePassphrase(options: PassphraseGeneratorOptionsV1) {
+        this.generatePassphraseCalls.push(structuredClone(options));
+        return new Promise<string>((resolve) => {
+          resolvePassphrase = resolve;
+        });
+      }
+    }
+    const broker = new DelayedPassphraseBroker();
+    await render(broker);
+    await enter("unlock-password", "synthetic master password");
+    await click("Unlock vault");
+    await click("Create item");
+    await toggle("generator-mode-passphrase");
+    act(() => byText("Generate passphrase").click());
+    await act(async () => Promise.resolve());
+    await toggle("generator-mode-password");
+    await act(async () => resolvePassphrase?.(generatedPassphrase));
+    expect(value("item-password")).toBe("");
   });
 
   it("displays, expires, and revalidates an exact-revision TOTP code", async () => {

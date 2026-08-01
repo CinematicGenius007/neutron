@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
@@ -251,6 +251,30 @@ function assertNoSentinels(value, sentinels, label) {
   }
 }
 
+async function emittedPassphraseWordlist(build) {
+  const worker = await readFile(join(outputRoot, build.workerFile), "utf8");
+  const prefix = "Object.freeze(`abacus.";
+  const suffix = "zoom`.split(`.`))";
+  const start = worker.indexOf(prefix);
+  assert.notEqual(start, -1, "emitted frozen passphrase wordlist is absent");
+  assert.equal(worker.indexOf(prefix, start + 1), -1, "multiple emitted passphrase wordlists");
+  const end = worker.indexOf(suffix, start);
+  assert.notEqual(end, -1, "emitted passphrase wordlist terminator is absent");
+  assert.equal(worker.indexOf(suffix, end + 1), -1, "multiple emitted wordlist terminators");
+  const encoded = worker.slice(start + "Object.freeze(`".length, end + "zoom".length);
+  const words = encoded.split(".");
+  assert.equal(words.length, 7_776);
+  assert.equal(words[0], "abacus");
+  assert.equal(words.at(-1), "zoom");
+  assert(words.every((word) => /^[a-z-]{3,9}$/.test(word) && !word.includes(".")));
+  for (let index = 1; index < words.length; index += 1) assert(words[index - 1] < words[index]);
+  assert.equal(
+    createHash("sha256").update(words.join("\n")).digest("hex"),
+    "abae49761b88f3f1ba31ef944bea1f61b795a3cd7e1cfb7d276ed45bf77967ba",
+  );
+  return Object.freeze(words);
+}
+
 function referenceTotp(secret, algorithm, digits, period, validFromUnixSeconds) {
   const counter = BigInt(validFromUnixSeconds) / BigInt(period);
   const counterBytes = Buffer.alloc(8);
@@ -266,6 +290,16 @@ function referenceTotp(secret, algorithm, digits, period, validFromUnixSeconds) 
 }
 
 const build = await verifyBuild();
+const passphraseWords = await emittedPassphraseWordlist(build);
+const passphraseWordSet = new Set(passphraseWords);
+const attribution =
+  "Electronic Frontier Foundation; CC-BY-4.0; https://creativecommons.org/licenses/by/4.0/; source https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt retrieved 2026-08-01. Neutron modified the material by discarding the dice indices and rejoining the 7,776 words with U+000A. The CC BY 4.0 disclaimer of warranties applies.";
+const windowFiles = build.files.filter(
+  (file) => file.startsWith("assets/index-") && file.endsWith(".js"),
+);
+assert.equal(windowFiles.length, 1, "expected exactly one emitted window entry");
+const windowSource = await readFile(join(outputRoot, windowFiles[0]), "utf8");
+assert.equal(windowSource.split(attribution).length - 1, 1, "emitted attribution mismatch");
 const publicFiles = new Set(build.files.filter((file) => !file.startsWith(".vite/")));
 const allowedPaths = new Set([...publicFiles].map((file) => `/${file}`));
 allowedPaths.add("/");
@@ -366,10 +400,20 @@ try {
   await createForm.getByLabel("Username").fill(username);
   await activateWithKeyboard(page, createForm.getByRole("button", { name: "Generate password" }));
   await page.waitForFunction(() => document.querySelector("#item-password")?.value.length === 20);
-  const generatedPassword = await createForm.getByLabel("Password").inputValue();
+  const generatedPassword = await createForm.getByLabel("Password", { exact: true }).inputValue();
   assert.equal(generatedPassword.length, 20);
   assert.match(generatedPassword, /^[A-Za-z0-9!@#$%^&*()\-_=+[\]{};:,.?]+$/);
   sentinels.push(generatedPassword);
+  await createForm.getByLabel("Random-word passphrase").check();
+  assert.equal(await createForm.getByLabel("Words").inputValue(), "8");
+  assert.equal((await createForm.textContent()).includes(attribution), true);
+  await activateWithKeyboard(page, createForm.getByRole("button", { name: "Generate passphrase" }));
+  await page.waitForFunction(() => document.querySelector("#item-password")?.value.includes("."));
+  const generatedPassphrase = await createForm.getByLabel("Password", { exact: true }).inputValue();
+  const generatedWords = generatedPassphrase.split(".");
+  assert.equal(generatedWords.length, 8);
+  assert(generatedWords.every((word) => passphraseWordSet.has(word)));
+  sentinels.push(generatedPassphrase);
   assertNoSentinels(await originPersistenceDump(page), sentinels, "pre-save origin persistence");
   await activateWithKeyboard(page, createForm.getByRole("button", { name: "Create item" }));
   await page.getByRole("heading", { name: originalTitle }).waitFor();
@@ -434,25 +478,31 @@ try {
 
   await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
   const cancelledForm = page.getByRole("form", { name: "Create item" });
+  await cancelledForm.getByLabel("Random-word passphrase").check();
   await activateWithKeyboard(
     page,
-    cancelledForm.getByRole("button", { name: "Generate password" }),
+    cancelledForm.getByRole("button", { name: "Generate passphrase" }),
   );
-  await page.waitForFunction(() => document.querySelector("#item-password")?.value.length === 20);
-  const cancelledGeneratedPassword = await cancelledForm.getByLabel("Password").inputValue();
-  assert.equal(cancelledGeneratedPassword.length, 20);
-  sentinels.push(cancelledGeneratedPassword);
+  await page.waitForFunction(() => document.querySelector("#item-password")?.value.includes("."));
+  const cancelledGeneratedPassphrase = await cancelledForm
+    .getByLabel("Password", { exact: true })
+    .inputValue();
+  assert.equal(cancelledGeneratedPassphrase.split(".").length, 8);
+  sentinels.push(cancelledGeneratedPassphrase);
   await activateWithKeyboard(page, cancelledForm.getByRole("button", { name: "Cancel editing" }));
   assertNoSentinels(await rawDatabaseDump(page), sentinels, "cancelled-generation IndexedDB");
   assertNoSentinels(await runtimeSurfaceDump(page), sentinels, "cancelled-generation runtime");
 
   await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
   const lockForm = page.getByRole("form", { name: "Create item" });
-  await activateWithKeyboard(page, lockForm.getByRole("button", { name: "Generate password" }));
-  await page.waitForFunction(() => document.querySelector("#item-password")?.value.length === 20);
-  const lockedGeneratedPassword = await lockForm.getByLabel("Password").inputValue();
-  assert.equal(lockedGeneratedPassword.length, 20);
-  sentinels.push(lockedGeneratedPassword);
+  await lockForm.getByLabel("Random-word passphrase").check();
+  await activateWithKeyboard(page, lockForm.getByRole("button", { name: "Generate passphrase" }));
+  await page.waitForFunction(() => document.querySelector("#item-password")?.value.includes("."));
+  const lockedGeneratedPassphrase = await lockForm
+    .getByLabel("Password", { exact: true })
+    .inputValue();
+  assert.equal(lockedGeneratedPassphrase.split(".").length, 8);
+  sentinels.push(lockedGeneratedPassphrase);
   assertNoSentinels(await originPersistenceDump(page), sentinels, "pre-lock origin persistence");
   const activeWorkerBeforeLock = page.workers()[0];
   assert(activeWorkerBeforeLock !== undefined, "unlocked vault worker is absent");

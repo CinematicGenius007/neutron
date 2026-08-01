@@ -2,6 +2,11 @@ import { parseVaultItem, type VaultItem } from "@neutron/vault-domain/items";
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
 import {
+  DEFAULT_PASSPHRASE_GENERATOR_OPTIONS,
+  type PassphraseGeneratorOptionsV1,
+} from "./passphrase-generator.js";
+import { EFF_LONG_WORDLIST_ATTRIBUTION } from "./passphrase-wordlist.js";
+import {
   DEFAULT_PASSWORD_GENERATOR_OPTIONS,
   type PasswordGeneratorOptionsV1,
 } from "./password-generator.js";
@@ -36,6 +41,7 @@ export interface ItemEditorProps {
   readonly initial?: VaultItem;
   readonly onCancel: () => void;
   readonly onDelete?: () => void;
+  readonly onGeneratePassphrase: (options: PassphraseGeneratorOptionsV1) => Promise<string>;
   readonly onGeneratePassword: (options: PasswordGeneratorOptionsV1) => Promise<string>;
   readonly onSave: (item: VaultItem) => void;
 }
@@ -138,14 +144,19 @@ export function ItemEditor({
   initial,
   onCancel,
   onDelete,
+  onGeneratePassphrase,
   onGeneratePassword,
   onSave,
 }: ItemEditorProps) {
   const [draft, setDraft] = useState<ItemDraft>(() => initialDraft(initial));
   const [validationError, setValidationError] = useState<string>();
   const [generationError, setGenerationError] = useState<string>();
+  const [generatorMode, setGeneratorMode] = useState<"passphrase" | "password">("password");
   const [generatorOptions, setGeneratorOptions] = useState<PasswordGeneratorOptionsV1>(
     DEFAULT_PASSWORD_GENERATOR_OPTIONS,
+  );
+  const [passphraseOptions, setPassphraseOptions] = useState<PassphraseGeneratorOptionsV1>(
+    DEFAULT_PASSPHRASE_GENERATOR_OPTIONS,
   );
   const [generating, setGenerating] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -173,19 +184,32 @@ export function ItemEditor({
     setGeneratorOptions((current) => ({ ...current, [key]: value }));
   }
 
-  async function requestGeneratedPassword(): Promise<void> {
+  function passphraseOption(words: number): void {
+    invalidateGeneration();
+    setPassphraseOptions({ words });
+  }
+
+  function changeGeneratorMode(mode: "passphrase" | "password"): void {
+    invalidateGeneration();
+    setGeneratorMode(mode);
+  }
+
+  async function requestGeneratedSecret(): Promise<void> {
     if (busy) return;
     const epoch = generationEpoch.current + 1;
     generationEpoch.current = epoch;
     setGenerating(true);
     setGenerationError(undefined);
     try {
-      const password = await onGeneratePassword(generatorOptions);
+      const password =
+        generatorMode === "password"
+          ? await onGeneratePassword(generatorOptions)
+          : await onGeneratePassphrase(passphraseOptions);
       if (generationEpoch.current !== epoch) return;
       setDraft((current) => (current.type === "login" ? { ...current, password } : current));
     } catch {
       if (generationEpoch.current === epoch)
-        setGenerationError("Password could not be generated. Check the generator options.");
+        setGenerationError("The credential could not be generated. Check the generator options.");
     } finally {
       if (generationEpoch.current === epoch) setGenerating(false);
     }
@@ -278,35 +302,84 @@ export function ItemEditor({
               onChange={(event) => field("password", event.currentTarget.value)}
             />
             <fieldset className="password-generator" aria-busy={generating}>
-              <legend>Generate a random password</legend>
-              <label htmlFor="password-generator-length">Length</label>
-              <input
-                id="password-generator-length"
-                type="number"
-                min={16}
-                max={128}
-                step={1}
-                value={generatorOptions.length}
-                onChange={(event) => generatorOption("length", Number(event.currentTarget.value))}
-              />
-              {(
-                [
-                  ["lowercase", "Lowercase letters"],
-                  ["uppercase", "Uppercase letters"],
-                  ["digits", "Digits"],
-                  ["symbols", "Symbols"],
-                ] as const
-              ).map(([key, label]) => (
-                <label className="check-label" htmlFor={`password-generator-${key}`} key={key}>
+              <legend>Generate a credential</legend>
+              <label className="check-label" htmlFor="generator-mode-password">
+                <input
+                  id="generator-mode-password"
+                  type="radio"
+                  name="generator-mode"
+                  checked={generatorMode === "password"}
+                  onChange={() => changeGeneratorMode("password")}
+                />
+                Random-character password (recommended for stored credentials)
+              </label>
+              <label className="check-label" htmlFor="generator-mode-passphrase">
+                <input
+                  id="generator-mode-passphrase"
+                  type="radio"
+                  name="generator-mode"
+                  checked={generatorMode === "passphrase"}
+                  onChange={() => changeGeneratorMode("passphrase")}
+                />
+                Random-word passphrase
+              </label>
+              {generatorMode === "password" ? (
+                <>
+                  <label htmlFor="password-generator-length">Length</label>
                   <input
-                    id={`password-generator-${key}`}
-                    type="checkbox"
-                    checked={generatorOptions[key]}
-                    onChange={(event) => generatorOption(key, event.currentTarget.checked)}
+                    id="password-generator-length"
+                    type="number"
+                    min={16}
+                    max={128}
+                    step={1}
+                    value={generatorOptions.length}
+                    onChange={(event) =>
+                      generatorOption("length", Number(event.currentTarget.value))
+                    }
                   />
-                  {label}
-                </label>
-              ))}
+                  {(
+                    [
+                      ["lowercase", "Lowercase letters"],
+                      ["uppercase", "Uppercase letters"],
+                      ["digits", "Digits"],
+                      ["symbols", "Symbols"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label className="check-label" htmlFor={`password-generator-${key}`} key={key}>
+                      <input
+                        id={`password-generator-${key}`}
+                        type="checkbox"
+                        checked={generatorOptions[key]}
+                        onChange={(event) => generatorOption(key, event.currentTarget.checked)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                  <p className="field-hint">
+                    Character classes are allowed sets; each selected class may not appear every
+                    time.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <label htmlFor="passphrase-generator-words">Words</label>
+                  <input
+                    id="passphrase-generator-words"
+                    type="number"
+                    min={7}
+                    max={24}
+                    step={1}
+                    value={passphraseOptions.words}
+                    onChange={(event) => passphraseOption(Number(event.currentTarget.value))}
+                  />
+                  <p className="field-hint">
+                    Eight words provide about 103.4 bits of ideal search space. Passphrases are
+                    intended for human entry; they are not stronger than an equivalent random
+                    password.
+                  </p>
+                  <p className="field-hint">{EFF_LONG_WORDLIST_ATTRIBUTION}</p>
+                </>
+              )}
               {generationError === undefined ? null : (
                 <p className="error" role="alert">
                   {generationError}
@@ -316,13 +389,16 @@ export function ItemEditor({
                 type="button"
                 className="secondary"
                 disabled={busy}
-                onClick={() => void requestGeneratedPassword()}
+                onClick={() => void requestGeneratedSecret()}
               >
-                {generating ? "Generate another password" : "Generate password"}
+                {generating
+                  ? generatorMode === "password"
+                    ? "Generate another password"
+                    : "Generate another passphrase"
+                  : generatorMode === "password"
+                    ? "Generate password"
+                    : "Generate passphrase"}
               </button>
-              <p className="field-hint">
-                Character classes are allowed sets; each selected class may not appear every time.
-              </p>
             </fieldset>
             <label className="check-label" htmlFor="item-has-url">
               <input

@@ -8,6 +8,9 @@ export type ApplicationModuleClass = "non-bundle" | "shared" | "window" | "worke
 
 const applicationSourceRoot = fileURLToPath(new URL("./src/", import.meta.url));
 const repositoryRoot = normalizedPath(resolve(applicationSourceRoot, "../../.."));
+const normalizedApplicationSourceRoot = normalizedPath(resolve(applicationSourceRoot));
+const packagesRoot = `${repositoryRoot}/packages`;
+const workerUrlModuleId = `${normalizedApplicationSourceRoot}/vault-worker-entry.ts?worker&url`;
 const applicationModules = Object.freeze({
   "app.tsx": "window",
   "browser-support.ts": "window",
@@ -42,17 +45,15 @@ function pathWithoutQuery(id: string): string {
 }
 
 function applicationSourcePath(id: string): string | undefined {
-  const marker = "/apps/web/src/";
   const path = pathWithoutQuery(id);
-  const markerIndex = path.lastIndexOf(marker);
-  return markerIndex === -1 ? undefined : path.slice(markerIndex + marker.length);
+  const prefix = `${normalizedApplicationSourceRoot}/`;
+  return path.startsWith(prefix) ? path.slice(prefix.length) : undefined;
 }
 
 function workspaceSourcePath(id: string): string | undefined {
-  const marker = "/packages/";
   const path = pathWithoutQuery(id);
-  const markerIndex = path.lastIndexOf(marker);
-  return markerIndex === -1 ? undefined : path.slice(markerIndex + marker.length);
+  const prefix = `${packagesRoot}/`;
+  return path.startsWith(prefix) ? path.slice(prefix.length) : undefined;
 }
 
 function repositoryPath(id: string): string | undefined {
@@ -70,7 +71,7 @@ export function applicationModuleClass(id: string): ApplicationModuleClass | und
 
 export function isWindowModuleAllowed(id: string): boolean {
   const sourcePath = applicationSourcePath(id);
-  if (sourcePath === "vault-worker-entry.ts" && id.endsWith("?worker&url")) return true;
+  if (normalizedPath(id) === workerUrlModuleId) return true;
   if (sourcePath !== undefined) {
     const moduleClass = applicationModuleClass(id);
     return moduleClass === "window" || moduleClass === "shared";

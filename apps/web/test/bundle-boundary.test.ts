@@ -7,9 +7,9 @@ import {
   isWorkerModuleAllowed,
 } from "../vite.config.js";
 
-const sourceRoot = "/workspace/apps/web/src/";
-const packageRoot = "/workspace/packages/";
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url)).replaceAll("\\", "/");
+const sourceRoot = `${repositoryRoot}apps/web/src/`;
+const packageRoot = `${repositoryRoot}packages/`;
 const currentSourceFiles = [
   "app.tsx",
   "browser-support.ts",
@@ -53,6 +53,12 @@ describe("closed bundle-boundary classification", () => {
     expect(isWorkerModuleAllowed(`${sourceRoot}worker/local-vault.ts`)).toBe(false);
     expect(isWindowModuleAllowed(`${repositoryRoot}apps/web/vault-core.ts`)).toBe(false);
     expect(isWorkerModuleAllowed(`${repositoryRoot}shared/vault-core.ts`)).toBe(false);
+    expect(
+      isWindowModuleAllowed(`${repositoryRoot}probe/apps/web/src/vault-worker-protocol.ts`),
+    ).toBe(false);
+    expect(isWorkerModuleAllowed(`${repositoryRoot}probe/packages/crypto/dist/provider.js`)).toBe(
+      false,
+    );
   });
 
   it("allows only the declared application side and shared modules", () => {
@@ -72,6 +78,9 @@ describe("closed bundle-boundary classification", () => {
     const entry = `${sourceRoot}vault-worker-entry.ts`;
     expect(isWindowModuleAllowed(`${entry}?worker&url`)).toBe(true);
     expect(isWindowModuleAllowed(`${entry}?worker`)).toBe(false);
+    expect(isWindowModuleAllowed(`${entry}?raw?worker&url`)).toBe(false);
+    expect(isWindowModuleAllowed(`${entry}?url&worker`)).toBe(false);
+    expect(isWindowModuleAllowed(`${entry}?worker&url?worker&url`)).toBe(false);
     expect(isWindowModuleAllowed(`${entry}?worker&url&extra`)).toBe(false);
     expect(isWindowModuleAllowed(`${sourceRoot}vault-core.ts?worker&url`)).toBe(false);
   });

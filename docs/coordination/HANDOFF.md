@@ -363,3 +363,19 @@ The next safe action is to assign TASK-0030 remediation. Anchor both classifiers
 to exact canonical roots, make the worker URL comparison exact, and add both
 regressions. Do not create TASK-0031 until a different reviewer passes the
 remediation commit.
+
+## TASK-0030 remediation checkpoint — 2026-08-01T11:12:06Z
+
+Both independent-review findings are remediated and TASK-0030 is back in
+`review`. Application/package recognition is anchored to exact normalized
+canonical roots, and the worker URL exception compares the complete module ID
+to the one literal allowed query. Unit regressions cover decoy root markers and
+prefixed, reordered, duplicated, and suffixed query forms.
+
+The exact P1 and P2 exploits now fail the filtered production build and name the
+offending decoy path/query. All temporary imports, files, and directories were
+removed. The complete required gate set passed without retry; artifact names
+and sizes remain unchanged.
+
+This remediation still needs independent review of its committed hash before
+TASK-0030 may close. TASK-0031 remains unfiled and must not start.

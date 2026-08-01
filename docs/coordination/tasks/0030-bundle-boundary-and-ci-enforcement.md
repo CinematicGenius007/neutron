@@ -1,11 +1,11 @@
 # TASK 0030 — Bundle boundary and CI enforcement
 
-Status: active
-Owner: unassigned (remediation required after review)
+Status: review
+Owner: unassigned (implemented and remediated by `/root`)
 Claimed: 2026-08-01T10:50:31Z
 Worktree/branch: shared-worktree (`main`)
-Reviewer: unassigned
-Review claimed: —
+Reviewer: `/root/task_0030_remediation_reviewer`
+Review claimed: 2026-08-01T11:12:06Z (remediation re-review)
 Depends on: 0029
 Blocks: 0031
 Security-sensitive: yes
@@ -138,6 +138,25 @@ unclassified-path probes, then restore and verify every probe path is clean.
   repository-local-path hardening, so it was not retained as the claim time.
   Assigned `/root/task_0030_reviewer` now, after the final candidate and gates,
   using this observed UTC timestamp.
+- 2026-08-01T11:08:49Z — Orchestrator accepted the independent BLOCK and
+  claimed bounded remediation. Scope is limited to canonical-root anchoring,
+  exact full worker-query comparison, their regression tests, and records.
+- 2026-08-01T11:12:06Z — Anchored application, package, and repository
+  classification to their normalized canonical roots and changed the worker URL
+  exception to equality with the complete normalized module ID. Added decoy
+  root and prefixed/reordered/duplicated/suffixed query regressions.
+- 2026-08-01T11:12:06Z — Reproduced both original exploits after remediation.
+  The retained decoy module at
+  `probe/apps/web/src/vault-worker-protocol.ts` failed non-zero naming that exact
+  forbidden module; `vault-worker-entry.ts?raw?worker&url` failed non-zero
+  naming that exact forbidden ID. Removed both imports, the probe file, and all
+  empty probe directories before gates.
+- 2026-08-01T11:12:06Z — Final remediation gates passed without retry: frozen
+  install, typecheck, lint/format across 110 files, 13 files / 108 unit tests,
+  root build and seven-file verification, 35 + 3 browser tests, production CSP
+  Chromium flow, and diff check. Asset names and sizes remained unchanged.
+  Cleared remediation ownership, assigned a fresh independent reviewer, and
+  moved TASK-0030 to `review` for the exact committed remediation artifact.
 
 ## Handoff
 

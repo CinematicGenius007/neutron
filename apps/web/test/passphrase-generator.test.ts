@@ -43,7 +43,9 @@ describe("passphrase generation policy", () => {
     );
     for (let index = 0; index < PASSPHRASE_WORDLIST.length; index += 1) {
       const word = PASSPHRASE_WORDLIST[index] as string;
-      expect(word).toMatch(/^[a-z-]{3,9}$/);
+      expect(word).toMatch(/^[a-z]+(?:-[a-z]+)*$/);
+      expect(word.length).toBeGreaterThanOrEqual(3);
+      expect(word.length).toBeLessThanOrEqual(9);
       expect(word).not.toContain(".");
       if (index > 0) expect((PASSPHRASE_WORDLIST[index - 1] as string) < word).toBe(true);
     }
@@ -52,7 +54,7 @@ describe("passphrase generation policy", () => {
   it("accepts exact word-count boundaries and rejects hostile option shapes", () => {
     for (const words of [7, 8, 24])
       expect(parsePassphraseGeneratorOptions({ words })).toEqual({ words });
-    for (const words of [6, 25, 7.5, Number.NaN, Number.POSITIVE_INFINITY])
+    for (const words of [-1, 6, 25, 7.5, Number.NaN, Number.POSITIVE_INFINITY])
       expect(() => parsePassphraseGeneratorOptions({ words })).toThrow();
     for (const candidate of [{}, { words: 8, extra: true }, Object.create({ words: 8 })])
       expect(() => parsePassphraseGeneratorOptions(candidate)).toThrow();

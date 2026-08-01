@@ -10,7 +10,8 @@ This file covers non-code assets compiled into the application.
 
 ## EFF long passphrase wordlist
 
-Used by the passphrase generator accepted in ADR 0014.
+Used by the passphrase generator governed by accepted ADR 0015, which supersedes
+ADR 0014 while carrying forward its unchanged wordlist and attribution policy.
 
 - **Creator:** Electronic Frontier Foundation
 - **License:** CC-BY-4.0 (Creative Commons Attribution 4.0 International)
@@ -41,8 +42,7 @@ Bonneau, 2016-07-19,
 <https://www.eff.org/deeplinks/2016/07/new-wordlists-random-passphrases>). This
 is a documented reading, not legal advice and not an explicit written grant.
 
-When Task 0023 is implemented, the same attribution must be exported as a string
-constant from the wordlist module and rendered in the application's generator
-surface. The production build strips comments — including `@license` banners —
-from emitted JavaScript, so a source-file header alone would not survive
-redistribution.
+The same attribution is exported as a string constant from the wordlist module
+and rendered in the application's generator surface. The production build
+strips comments — including `@license` banners — from emitted JavaScript, so a
+source-file header alone would not survive redistribution.

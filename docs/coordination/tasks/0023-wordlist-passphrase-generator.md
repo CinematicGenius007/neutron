@@ -5,7 +5,7 @@ Owner: unassigned
 Claimed: 2026-08-01T01:48:52Z
 Worktree/branch: shared-worktree (main)
 Reviewer: `/root/task_0023_review`
-Review claimed: 2026-08-01T02:02:15Z
+Review claimed: 2026-08-01T02:08:43Z
 Depends on: 0018, 0020, 0021, 0025, 0026; accepted ADR 0015 (supersedes 0014)
 Blocks: Stage 2 generator completeness
 Security-sensitive: yes
@@ -44,6 +44,7 @@ the password path rather than becoming a second dialect.
 - `apps/web/test/browser/app.browser.tsx`
 - `apps/web/test/browser/vault-worker.browser.ts`
 - `apps/web/scripts/test-production.mjs`
+- `docs/third-party-notices.md`
 
 ## Out of scope
 
@@ -165,6 +166,17 @@ sizes before and after, and any test retry with its exact cause.
   check. Final emitted sizes are 303,516-byte window JavaScript,
   661,361-byte worker JavaScript, and 4,759-byte CSS, versus the recorded
   237,586 / 596,854 / 4,759-byte baseline. Independent review remains required.
+- 2026-08-01T02:07:40Z — Independent review passed with P0 0, P1 0, P2 3.
+  Returned to active to remediate every P2: use the ADR's exact word grammar in
+  invariant tests, add explicit negative-count and pending-enrollment passphrase
+  probes, and correct stale future-tense/superseded-ADR wording in the existing
+  third-party notice. Added only `docs/third-party-notices.md` to allowed paths;
+  the notice was already required by ADR 0014/0015 but was mistakenly omitted
+  from the task's implementation scope.
+- 2026-08-01T02:08:43Z — Remediated all three P2s and returned to the same
+  independent reviewer. Re-ran every required command without retry: frozen
+  install; typecheck; lint; format check; 12 unit test files with 102 tests;
+  build; 7 browser files with 27 tests; exact-CSP production; and diff check.
 
 ## Handoff
 

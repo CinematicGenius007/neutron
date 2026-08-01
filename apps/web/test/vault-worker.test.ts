@@ -542,6 +542,9 @@ describe("vault worker boundary", () => {
         code: "locked",
       },
     );
+    await expect(
+      client.generatePassphrase(DEFAULT_PASSPHRASE_GENERATOR_OPTIONS),
+    ).rejects.toMatchObject({ code: "locked" });
     await client.confirmEnrollment(recoveryKit);
     await expect(client.generatePassword(DEFAULT_PASSWORD_GENERATOR_OPTIONS)).resolves.toHaveLength(
       20,

@@ -266,7 +266,15 @@ async function emittedPassphraseWordlist(build) {
   assert.equal(words.length, 7_776);
   assert.equal(words[0], "abacus");
   assert.equal(words.at(-1), "zoom");
-  assert(words.every((word) => /^[a-z-]{3,9}$/.test(word) && !word.includes(".")));
+  assert(
+    words.every(
+      (word) =>
+        /^[a-z]+(?:-[a-z]+)*$/.test(word) &&
+        word.length >= 3 &&
+        word.length <= 9 &&
+        !word.includes("."),
+    ),
+  );
   for (let index = 1; index < words.length; index += 1) assert(words[index - 1] < words[index]);
   assert.equal(
     createHash("sha256").update(words.join("\n")).digest("hex"),

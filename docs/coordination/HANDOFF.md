@@ -3,10 +3,12 @@
 Updated: 2026-08-01
 Branch: `main`
 Last committed checkpoint before Task 0024: `6d83747`
-Current checkpoint: TASK-0029 closes the independently re-reviewed Task 0024 UI
-findings and is done after independent review of exact implementation commit
-`7aa8a18`. Task 0024's original review remains **not** repository-verifiable;
-TASK-0028 is the authoritative record of that evidence gap.
+Current checkpoint: TASK-0030 is done after independent review of exact
+remediation commit `a01f6f3`. The root build now executes the web bundle
+boundary and CI is configured to run the browser and production security gates;
+no connected CI execution is claimed. Task 0024's original review remains
+**not** repository-verifiable; TASK-0028 is the authoritative record of that
+evidence gap.
 
 This is a navigation checkpoint, not a substitute for authoritative task files
 or accepted ADRs. Verify it against the repository before acting.
@@ -379,3 +381,27 @@ and sizes remain unchanged.
 
 This remediation still needs independent review of its committed hash before
 TASK-0030 may close. TASK-0031 remains unfiled and must not start.
+
+## TASK-0030 closure — 2026-08-01T11:22:52Z
+
+An independent final reviewer examined exact remediation commit `a01f6f3` and
+returned **PASS — P0 0 / P1 0 / P2 0**. The previously assigned remediation
+reviewer returned no verdict because of a tool-level refusal; it is not counted
+as review evidence.
+
+The final reviewer reproduced both remediated exploits with retained live
+probes. A side-effectful decoy module below
+`probe/apps/web/src/vault-worker-protocol.ts` and the literal worker query
+`vault-worker-entry.ts?raw?worker&url` each made the filtered web build return
+non-zero and name the exact forbidden module. All probe edits, files, and empty
+directories were removed before gates.
+
+Frozen install, typecheck, lint/format across 110 files, the focused 6-test
+boundary suite, 13 files / 108 root tests, root build, 35 Chromium browser tests
+plus 3 engine-matrix tests, production artifact/CSP verification, and diff check
+all passed without retry. Emitted sizes remain 314,822 / 661,361 / 5,922 bytes.
+No connected CI run, external system, or deployment was inspected or claimed.
+
+TASK-0031 may now be planned and preflighted as the next queue item, but no
+TASK-0031 file exists. Do not change worker validation until the orchestrator
+creates, bounds, and assigns that task.

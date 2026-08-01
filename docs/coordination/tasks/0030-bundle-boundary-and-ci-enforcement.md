@@ -1,11 +1,11 @@
 # TASK 0030 — Bundle boundary and CI enforcement
 
-Status: review
+Status: done
 Owner: unassigned (implemented and remediated by `/root`)
 Claimed: 2026-08-01T10:50:31Z
 Worktree/branch: shared-worktree (`main`)
-Reviewer: `/root/task_0030_remediation_reviewer`
-Review claimed: 2026-08-01T11:12:06Z (remediation re-review)
+Reviewer: `/root/task_0030_final_review`
+Review claimed: 2026-08-01T11:22:52Z
 Depends on: 0029
 Blocks: 0031
 Security-sensitive: yes
@@ -77,7 +77,7 @@ paths and positive inventory validation. This changes enforcement, not the ADR
 - [x] Existing emitted artifact policy and current application behavior remain
       unchanged.
 - [x] No real secrets appear in code, tests, logs, workflow, or history.
-- [ ] A separate reviewer attacks an identifiable committed artifact, including
+- [x] A separate reviewer attacks an identifiable committed artifact, including
       at least one real deliberate boundary violation, before closure.
 
 ## Verification
@@ -157,6 +157,11 @@ unclassified-path probes, then restore and verify every probe path is clean.
   Chromium flow, and diff check. Asset names and sizes remained unchanged.
   Cleared remediation ownership, assigned a fresh independent reviewer, and
   moved TASK-0030 to `review` for the exact committed remediation artifact.
+- 2026-08-01T11:22:52Z — The previously assigned remediation reviewer returned
+  no verdict because of a tool-level refusal. `/root/task_0030_final_review`
+  independently reviewed exact commit `a01f6f3`, reproduced both remediated
+  exploits as non-zero builds, removed every probe, and returned PASS with no
+  findings.
 
 ## Handoff
 
@@ -168,8 +173,8 @@ security gates; its 20-minute ceiling includes browser installation. `CLAUDE.md`
 states this configuration without claiming that GitHub has run it.
 
 No product behavior, persistence, protocol, worker runtime, cryptography,
-dependency, emitted artifact, or public policy changed. Independent review is
-pending against a committed artifact.
+dependency, emitted artifact, or public policy changed. Independent review of
+the committed remediation artifact is complete.
 
 ## Review
 
@@ -235,3 +240,58 @@ JSON, and CSS and throws on symlink-like directory entries. The CI workflow's
 pinned action references, Playwright installation, and two security commands
 are syntactically credible, but no connected GitHub run was inspected or
 claimed.
+
+### Final remediation review
+
+Independent review of exact remediation commit `a01f6f3` by
+`/root/task_0030_final_review`: **PASS — P0 0 / P1 0 / P2 0**.
+
+The reviewer inspected the canonical-root predicates, full worker-query
+comparison, their focused regressions, root build script, and CI commands. The
+focused suite covers decoy application and package roots plus prefixed,
+reordered, duplicated, suffixed, wrong-file, and incomplete worker queries.
+No alternate path or query spelling was found that widened the allowed module
+set.
+
+Two retained live probes independently reproduced the original findings after
+remediation:
+
+- importing a side-effectful module at
+  `probe/apps/web/src/vault-worker-protocol.ts` into the window returned non-zero
+  and named that exact module as forbidden;
+- changing the worker import to the literal
+  `vault-worker-entry.ts?raw?worker&url` returned non-zero and named that exact
+  module ID as forbidden.
+
+The first decoy draft contained no retained side effect and was tree-shaken, so
+its successful build did not enter the emitted module graph and was not treated
+as boundary evidence. The reviewer then made the synthetic module
+side-effectful and obtained the required non-zero control. Every temporary
+import, file, and empty probe directory was removed before normal verification.
+
+Exact review commands and results:
+
+```text
+pnpm install --frozen-lockfile               pass; already up to date
+pnpm typecheck                               pass
+pnpm lint                                    pass; 110 files
+pnpm format:check                            pass; 110 files
+pnpm exec vitest run apps/web/test/bundle-boundary.test.ts
+                                                pass; 1 file / 6 tests
+pnpm test                                    pass; 13 files / 108 tests
+pnpm build                                   pass; web boundary and 7-file verification
+pnpm --filter @neutron/web test:browser      pass; 4 files / 35 Chromium tests,
+                                                then 3 files / 3 engine-matrix tests
+pnpm --filter @neutron/web test:production   pass; 7-file verification and CSP flow
+git diff --check                             pass
+```
+
+The emitted files remain `index-C3y-6n8v.js` (314,822 bytes),
+`vault-worker-entry-DDLJAMuT.js` (661,361 bytes), and
+`index-uH94Wcke.css` (5,922 bytes). The working tree was clean at exact commit
+`a01f6f3` after all probes and gates. The review inspected no external system,
+claimed no connected CI execution, and performed no deployment.
+
+The previously assigned remediation reviewer returned no verdict because of a
+tool-level refusal; it supplies no approval evidence. This final reviewer is
+the independent closure authority for TASK-0030.

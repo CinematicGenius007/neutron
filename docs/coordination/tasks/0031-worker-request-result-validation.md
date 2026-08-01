@@ -1,11 +1,11 @@
 # TASK 0031 — Worker request/result validation
 
-Status: review
-Owner: unassigned (implemented by `/root`)
+Status: active
+Owner: unassigned (remediation required after review)
 Claimed: 2026-08-01T11:29:12Z
 Worktree/branch: shared-worktree (`main`)
-Reviewer: `/root/task_0031_review`
-Review claimed: 2026-08-01T11:44:09Z
+Reviewer: unassigned
+Review claimed: —
 Depends on: 0030
 Blocks: ADR-0016 idle auto-lock
 Security-sensitive: yes
@@ -137,4 +137,79 @@ is still required before closure.
 
 ## Review
 
-Pending independent review of a committed implementation artifact.
+### 2026-08-01T11:48:02Z — BLOCK on exact commit `fb2f458c`
+
+Reviewer: `/root/task_0031_review` (did not implement the candidate)
+
+Verdict: **BLOCK — P0 0 / P1 1 / P2 0**.
+
+#### P1 — checked handoff criterion is false and the handoff contradicts the candidate
+
+Acceptance criterion 9 requires the v2 same-build compatibility rule to be
+recorded in `docs/coordination/HANDOFF.md`, and the candidate marks that
+criterion complete. Exact commit `fb2f458c` does not change the handoff at all:
+its SHA-256 is byte-identical to the parent (`d04d22f60e68742dce4136c4e07fb90a19cfe25786385bc7cb4e3ebe5d536525`).
+The latest handoff checkpoint instead says TASK-0031 does not exist, must not
+change worker validation, and may only now be planned. It contains no v2
+same-build/fail-closed compatibility rule. This leaves a security-sensitive
+internal protocol change with a falsely checked transfer criterion and an
+authoritative session checkpoint that directly contradicts repository state.
+
+Remediation is documentation-only: append a current TASK-0031 implementation
+checkpoint to `docs/coordination/HANDOFF.md` naming exact commit `fb2f458c`, the
+v2 same-build deployment rule, unconditional v1/mixed-version rejection, actual
+gate evidence, current review BLOCK, and the next safe action. Preserve the old
+handoff sections as history. Then return this task to review for a fresh
+independent confirmation; do not alter product code to address this finding.
+
+#### Controls independently confirmed
+
+The implementation itself held against the requested attacks:
+
+- `validateItemOperationResult` is a worker-runtime function distinct from
+  `parseVaultWorkerResponse` and the client broker. Each of the five dispatch
+  branches calls it before returning; `#send` applies the global parser later,
+  and `VaultWorkerClient.#receive` checks pre-send expectations after parsing.
+- Requests and responses require protocol 2 exactly; protocol 1 rejects. Item,
+  revision, summary, and deletion results have exact v2 global shapes. The
+  worker and client both bind `vaultId`; get/update/delete bind item identity;
+  create binds generation 1/key version 1; update binds the exact successor and
+  requested key version; deletion binds all three requested identity fields.
+- Summary validation independently enforces the request limit, cursor floor,
+  per-collection strict order, cross-collection uniqueness, and greatest-ID
+  `nextCursor`; an empty page carrying a cursor rejects.
+- `LocalVaultSession.deleteItem` constructs its frozen receipt from `current`
+  only after `applyConditionalBatch` has deleted the exact matched wrapper and
+  payload and the operation epoch has been rechecked. The runtime does not echo
+  the request as the deletion receipt.
+- The diff changes no dependency or lock file, package, crypto primitive,
+  persisted record shape, network path, or server-visible metadata. The v2
+  fields repeat identities already held by the requesting window.
+- The production external-worker conflict probe sends protocol 2 and the exact
+  CSP Chromium flow passed; ordinary unit and browser CRUD remained green.
+
+Commands independently run against `fb2f458c` without retry:
+
+```text
+pnpm --filter @neutron/web exec vitest run test/vault-worker.test.ts test/local-vault.test.ts
+  pass; 2 files / 27 tests
+pnpm typecheck
+  pass
+pnpm lint
+  pass; 110 files
+pnpm format:check
+  pass; 110 files
+pnpm test
+  pass; 13 files / 110 tests
+pnpm build
+  pass; Verified 7 production files
+pnpm --filter @neutron/web test:browser
+  pass; 4 files / 35 Chromium tests and 3 files / 3 engine-matrix tests
+pnpm --filter @neutron/web test:production
+  pass; Verified 7 production files; Production CSP Chromium flow passed
+git diff --check
+  pass
+```
+
+The review made no product-code edits. Its only working-tree change is this
+task-file review record and lifecycle metadata.

@@ -730,6 +730,7 @@ export function VaultApp({
         setSelected({ ...revision, item });
         setEditor(undefined);
         setEditorDirty(false);
+        setNavigationIntent(undefined);
         setPage(undefined);
         setPageCursorHistory([]);
         setPageLoadFailed(false);
@@ -789,6 +790,7 @@ export function VaultApp({
         setSelected(undefined);
         setEditor(undefined);
         setEditorDirty(false);
+        setNavigationIntent(undefined);
         setPage(undefined);
         setPageCursorHistory([]);
         setPageLoadFailed(false);
@@ -1120,7 +1122,7 @@ export function VaultApp({
             </section>
             <section className="detail-panel">
               {navigationIntent === undefined ? null : (
-                <fieldset className="discard-confirmation">
+                <fieldset className="discard-confirmation" disabled={busy}>
                   <legend ref={focusHeading} tabIndex={-1}>
                     Discard unsaved changes?
                   </legend>

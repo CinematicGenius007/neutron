@@ -918,7 +918,7 @@ export function ItemEditor({
       </form>
 
       {!confirmingCancel ? null : (
-        <fieldset className="discard-confirmation">
+        <fieldset className="discard-confirmation" disabled={busy}>
           <legend ref={focusEditorElement} tabIndex={-1}>
             Discard unsaved changes?
           </legend>
@@ -935,7 +935,7 @@ export function ItemEditor({
       )}
 
       {!editing || onDelete === undefined ? null : confirmingDelete ? (
-        <fieldset className="delete-confirmation">
+        <fieldset className="delete-confirmation" disabled={busy}>
           <legend ref={focusEditorElement} tabIndex={-1}>
             Delete “{initial.title}”?
           </legend>

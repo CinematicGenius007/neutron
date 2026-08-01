@@ -551,7 +551,11 @@ try {
       .getAttribute("aria-current"),
     "true",
   );
-  assert.equal((await page.locator("body").textContent()).includes(generatedPassphrase), false);
+  assertNoSentinels(
+    await runtimeSurfaceDump(page),
+    [generatedPassphrase, loginNotes],
+    "selected masked login runtime",
+  );
   await page.setViewportSize({ width: 320, height: 640 });
   assert.equal(
     await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
@@ -674,7 +678,11 @@ try {
   await noteForm.getByLabel("Note").fill(noteBody);
   await activateWithKeyboard(page, noteForm.getByRole("button", { name: "Create item" }));
   await page.getByRole("heading", { name: noteTitle }).waitFor();
-  assert.equal((await page.locator("body").textContent()).includes(noteBody), false);
+  assertNoSentinels(
+    await runtimeSurfaceDump(page),
+    [noteBody],
+    "selected masked secure-note runtime",
+  );
   await activateWithKeyboard(page, page.getByRole("button", { name: "Show secure note" }));
   assert.equal((await page.locator("body").textContent()).includes(noteBody), true);
   await activateWithKeyboard(page, page.getByRole("button", { name: "Edit item" }));
@@ -697,7 +705,11 @@ try {
   await backupForm.getByLabel("Notes", { exact: true }).fill(backupNotes);
   await activateWithKeyboard(page, backupForm.getByRole("button", { name: "Create item" }));
   await page.getByRole("heading", { name: backupTitle }).waitFor();
-  assert.equal((await page.locator("body").textContent()).includes(backupCode), false);
+  assertNoSentinels(
+    await runtimeSurfaceDump(page),
+    [backupCode, backupNotes],
+    "selected masked backup-code runtime",
+  );
   await page.setViewportSize({ width: 320, height: 640 });
   await activateWithKeyboard(page, page.getByRole("button", { name: "Show backup codes" }));
   assert.equal((await page.locator("body").textContent()).includes(backupCode), true);
@@ -727,7 +739,7 @@ try {
   await jsonForm.getByLabel("JSON value").fill(JSON.stringify({ secret: jsonSecret }));
   await activateWithKeyboard(page, jsonForm.getByRole("button", { name: "Create item" }));
   await page.getByRole("heading", { name: jsonTitle }).waitFor();
-  assert.equal((await page.locator("body").textContent()).includes(jsonSecret), false);
+  assertNoSentinels(await runtimeSurfaceDump(page), [jsonSecret], "selected masked JSON runtime");
   await page.setViewportSize({ width: 320, height: 640 });
   await activateWithKeyboard(page, page.getByRole("button", { name: "Show json value" }));
   assert.equal((await page.locator("body").textContent()).includes(jsonSecret), true);

@@ -254,6 +254,16 @@ function value(id: string): string | undefined {
   return container?.querySelector<HTMLInputElement | HTMLTextAreaElement>(`#${id}`)?.value;
 }
 
+function runtimeSurface(): string {
+  return JSON.stringify({
+    formValues: [
+      ...(container?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea") ??
+        []),
+    ].map((input) => input.value),
+    html: container?.outerHTML,
+  });
+}
+
 afterEach(async () => {
   await act(async () => root?.unmount());
   container?.remove();
@@ -894,6 +904,105 @@ describe("React vault shell", () => {
     expect(document.activeElement).toBe(createAction);
   });
 
+  it("freezes a pending dirty-navigation decision while pagination is busy", async () => {
+    let releaseSecondPage: (() => void) | undefined;
+    class DelayedNavigationBroker extends FakeBroker {
+      override async listItemSummaries(_vaultId: string, _limit: number, cursor?: string) {
+        if (cursor === "second")
+          await new Promise<void>((resolve) => {
+            releaseSecondPage = resolve;
+          });
+        const firstPage = await super.listItemSummaries(_vaultId, _limit);
+        return {
+          issues: [],
+          items: cursor === undefined ? firstPage.items : [],
+          ...(cursor === undefined ? { nextCursor: "second" } : {}),
+        };
+      }
+    }
+    const broker = new DelayedNavigationBroker();
+    await render(broker);
+    await enter("unlock-password", "synthetic master password");
+    await click("Unlock vault");
+    await click("Synthetic login");
+    await click("Edit item");
+    await enter("item-title", "busy navigation draft");
+    await click("Synthetic login");
+    await click("Next page");
+    await act(async () => Promise.resolve());
+
+    const discard = byText("Discard and continue");
+    const keepEditing = byText("Keep editing");
+    expect(discard.matches(":disabled")).toBe(true);
+    expect(keepEditing.matches(":disabled")).toBe(true);
+    await act(async () => discard.click());
+    expect(value("item-title")).toBe("busy navigation draft");
+    expect(container?.textContent).toContain("Page 2 · loading");
+
+    await act(async () => releaseSecondPage?.());
+    expect(discard.matches(":disabled")).toBe(false);
+    expect(value("item-title")).toBe("busy navigation draft");
+    expect(container?.textContent).not.toContain("Opening item…");
+  });
+
+  it("clears stale dirty-navigation intent after successful save and delete", async () => {
+    const broker = new FakeBroker();
+    await render(broker);
+    await enter("unlock-password", "synthetic master password");
+    await click("Unlock vault");
+    await click("Synthetic login");
+    await click("Edit item");
+    await enter("item-title", "saved over stale navigation");
+    await click("Synthetic login");
+    expect(container?.textContent).toContain("Discard unsaved changes?");
+    await submitForm("Edit item");
+    expect(container?.textContent).not.toContain("Discard unsaved changes?");
+    expect(container?.textContent).toContain("saved over stale navigation");
+
+    await click("Edit item");
+    await enter("item-title", "delete over stale navigation");
+    await click("Synthetic login");
+    await click("Delete item");
+    await click("Confirm delete");
+    expect(container?.textContent).not.toContain("Discard unsaved changes?");
+    expect(container?.textContent).toContain("Choose an item to decrypt it");
+  });
+
+  it("disables every cancel and delete confirmation action while saving", async () => {
+    let releaseUpdate: (() => void) | undefined;
+    class DelayedUpdateBroker extends FakeBroker {
+      override async updateItem(...args: Parameters<FakeBroker["updateItem"]>) {
+        const result = await super.updateItem(...args);
+        await new Promise<void>((resolve) => {
+          releaseUpdate = resolve;
+        });
+        return result;
+      }
+    }
+    const broker = new DelayedUpdateBroker();
+    await render(broker);
+    await enter("unlock-password", "synthetic master password");
+    await click("Unlock vault");
+    await click("Synthetic login");
+    await click("Edit item");
+    await enter("item-title", "busy cancel confirmation");
+    await click("Cancel editing");
+    await submitForm("Edit item");
+    await act(async () => Promise.resolve());
+    expect(byText("Discard draft").matches(":disabled")).toBe(true);
+    expect(byText("Keep editing").matches(":disabled")).toBe(true);
+    await act(async () => releaseUpdate?.());
+
+    await click("Edit item");
+    await enter("item-title", "busy delete confirmation");
+    await click("Delete item");
+    await submitForm("Edit item");
+    await act(async () => Promise.resolve());
+    expect(byText("Confirm delete").matches(":disabled")).toBe(true);
+    expect(byText("Cancel deletion").matches(":disabled")).toBe(true);
+    await act(async () => releaseUpdate?.());
+  });
+
   it("requires delete confirmation and sends the exact selected tuple", async () => {
     const broker = new FakeBroker();
     await render(broker);
@@ -903,7 +1012,8 @@ describe("React vault shell", () => {
     await click("Show password");
     expect(container?.textContent).toContain(secret);
     await click("Edit item");
-    expect(container?.querySelector("#detail-secret-password")).toBeNull();
+    expect(container?.textContent).not.toContain(secret);
+    expect(value("item-password")).toBe(secret);
     await click("Cancel editing");
     expect(container?.textContent).not.toContain(secret);
     await click("Edit item");
@@ -1312,7 +1422,7 @@ describe("React vault shell", () => {
     ] as const;
     for (const [title, action, sentinel] of cases) {
       await click(title);
-      expect(container?.textContent).not.toContain(sentinel);
+      expect(runtimeSurface()).not.toContain(sentinel);
       await click(action);
       expect(container?.textContent).toContain(sentinel);
       const status = container?.querySelector('[role="status"]:last-of-type')?.textContent;
@@ -1320,7 +1430,12 @@ describe("React vault shell", () => {
     }
     expect(container?.textContent).not.toContain("backup-one-sentinel");
     await click("Edit item");
-    expect(container?.querySelector("#detail-secret-value")).toBeNull();
+    const surfaceWithoutEditorForm = container?.cloneNode(true) as HTMLDivElement | undefined;
+    surfaceWithoutEditorForm?.querySelectorAll("form").forEach((form) => {
+      form.remove();
+    });
+    expect(surfaceWithoutEditorForm?.textContent).not.toContain("json-value-sentinel");
+    expect(value("item-json")).toContain("json-value-sentinel");
     await click("Lock now");
     for (const [, , sentinel] of cases) expect(container?.textContent).not.toContain(sentinel);
   });

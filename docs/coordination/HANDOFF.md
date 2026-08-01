@@ -270,3 +270,22 @@ The working tree was clean before the closure record was added. TASK-0029 may
 now be filed as the next task in the queue, but no TASK-0029, TASK-0030, or
 TASK-0031 task file exists yet. Do not edit product code until the orchestrator
 creates, preflights, and assigns the next task.
+
+## TASK-0029 implementation checkpoint — 2026-08-01T09:46:17Z
+
+TASK-0029 is now filed and in `active`. Its bounded implementation closes the
+Task 0024 busy-navigation race, clears stale navigation intent after successful
+save/delete, disables both editor confirmation groups while busy, replaces
+selector-only secret-reset evidence with value/surface checks, and adds masked
+selected-item scans to the exact-CSP production flow.
+
+All required commands passed in the implementation session: frozen install,
+typecheck, lint and format across 109 files, 12 unit files / 102 tests, root
+build, browser tests (4 files / 35 Chromium tests plus 3 files / 3 TOTP matrix
+tests), production build verification and exact-CSP Chromium flow, and
+`git diff --check`.
+
+No persistence, protocol, worker, crypto, dependency, metadata, or network path
+changed. This is not approval: the implementation must be committed, moved to
+`review`, and independently reviewed at that exact commit before TASK-0029 can
+close. TASK-0030 and TASK-0031 remain queue labels without task files.

@@ -8,7 +8,7 @@
     "pnpm": "11.10.0"
   },
   "scripts": {
-    "build": "tsc --build",
+    "build": "tsc --build && pnpm --filter @neutron/web build",
     "format": "biome format --write .",
     "format:check": "biome check .",
     "lint": "biome lint .",

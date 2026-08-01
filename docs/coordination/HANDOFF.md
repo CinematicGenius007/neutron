@@ -310,3 +310,27 @@ crypto, dependency, metadata, or network path.
 The next safe action is to preflight and file TASK-0030 for boundary-enforcement
 hardening and CI gate wiring. No TASK-0030 file exists yet. Do not begin its
 implementation until the orchestrator has reserved, bounded, and assigned it.
+
+## TASK-0030 implementation checkpoint — 2026-08-01T10:56:39Z
+
+TASK-0030 is filed and in `review`. The candidate replaces basename denial with
+a closed classification of every bundle-relevant application source path,
+restricts workspace packages by build, makes root `pnpm build` execute the web
+boundary, and configures CI to install pinned Playwright engines and run both
+browser and exact-CSP production gates. This records workflow configuration,
+not a connected GitHub run.
+
+Temporary live probes proved that window-to-worker, worker-to-window, and new
+unclassified source paths all fail the web build; every probe was removed. All
+required local commands passed: frozen install, typecheck, lint/format across
+110 files, 13 unit files / 108 tests, root build with seven-file production
+verification, 38 browser checks, the production CSP Chromium flow, and diff
+check. The final combined browser run required one documented cleanup-flake
+retry (`IndexedDB deletion blocked`); the isolated worker test and complete
+rerun both passed. Emitted asset names and bytes remain unchanged from the Task
+0029 state.
+
+No product behavior, persistence, protocol, worker runtime, cryptography,
+dependency, or public policy changed. TASK-0030 must be committed and reviewed
+adversarially at that exact commit before closure. TASK-0031 remains an unfiled
+queue label and must not start yet.

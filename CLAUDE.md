@@ -71,25 +71,27 @@ docs/decisions/        ADRs (binding)
 docs/coordination/     task files (authoritative state) + HANDOFF.md
 ```
 
-Boundary rules enforced by `apps/web/vite.config.ts` at build time: the window
-bundle must not contain `packages/crypto`, `local-vault.ts`,
-`indexeddb-repository.ts`, or the worker runtime; the worker bundle must not
-contain React or the UI modules.
+Boundary rules enforced by `apps/web/vite.config.ts` at build time use a closed
+classification of every bundle-relevant `apps/web/src` path. The window accepts
+only window/shared modules and its declared workspace surface; the worker
+accepts only worker/shared modules and its declared package roots. A renamed,
+moved, split, or new source file fails the inventory until it is explicitly
+classified.
 
-Know exactly which command enforces this. Root `pnpm build` is
-`tsc --build`; it does not run Vite, does not run the boundary plugin, and does
-not run `apps/web/scripts/verify-build.mjs`. A boundary violation therefore does
-**not** fail root `pnpm build`. It fails:
+Root `pnpm build` runs TypeScript and the production web build, including both
+Vite boundary plugins and `apps/web/scripts/verify-build.mjs`. The same boundary
+also runs through:
 
 ```bash
-pnpm --filter @neutron/web build   # vite build && verify-build.mjs
+pnpm build                         # tsc plus the filtered web build
+pnpm --filter @neutron/web build   # vite build plus verify-build.mjs
 pnpm --filter @neutron/web test:production
 ```
 
-Nothing in `.github/workflows/ci.yml` runs either of those, so this control and
-the exact-CSP leakage scan are local-only evidence today. Wiring them into CI is
-queued but not yet filed as a task; the remediation queue in
-`docs/coordination/HANDOFF.md` is the authority on what is next.
+`.github/workflows/ci.yml` installs the pinned Playwright engines and invokes
+both `test:browser` and `test:production`. This records what the workflow is
+configured to run; do not claim connected CI evidence until GitHub reports an
+actual run.
 
 ## House style (match it; do not introduce a second dialect)
 

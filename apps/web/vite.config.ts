@@ -1,26 +1,127 @@
+import { readdirSync } from "node:fs";
+import { relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
-const workerOnlyPackages = ["/packages/crypto/"];
-const workerOnlyFiles = [
-  "indexeddb-repository.ts",
-  "local-vault.ts",
-  "vault-worker-entry.ts",
-  "vault-worker-runtime.ts",
-];
-const windowOnlyFiles = ["app.tsx", "main.tsx"];
-const windowOnlyPackages = ["/react/", "/react-dom/"];
+export type ApplicationModuleClass = "non-bundle" | "shared" | "window" | "worker";
 
-/**
- * Matches a module by file name anywhere in the tree rather than by its current
- * directory. Matching `/src/local-vault.ts` as a substring would stop matching
- * the moment someone moved that file one directory deeper, which is the same
- * silent-non-enforcement failure this plugin already had once (Task 0025).
- */
-function hasFileName(id: string, fileNames: readonly string[]): boolean {
-  const path = id.split("?")[0] ?? id;
-  return fileNames.includes(path.slice(path.lastIndexOf("/") + 1));
+const applicationSourceRoot = fileURLToPath(new URL("./src/", import.meta.url));
+const repositoryRoot = normalizedPath(resolve(applicationSourceRoot, "../../.."));
+const applicationModules = Object.freeze({
+  "app.tsx": "window",
+  "browser-support.ts": "window",
+  "index.ts": "non-bundle",
+  "indexeddb-repository.ts": "worker",
+  "item-editor.tsx": "window",
+  "local-vault.ts": "worker",
+  "main.tsx": "window",
+  "passphrase-generator.ts": "shared",
+  "passphrase-wordlist.ts": "shared",
+  "password-generator.ts": "shared",
+  "styles.css": "window",
+  "totp.ts": "shared",
+  "vault-worker-client.ts": "window",
+  "vault-worker-entry.ts": "worker",
+  "vault-worker-protocol.ts": "shared",
+  "vault-worker-runtime.ts": "worker",
+  "vite-env.d.ts": "non-bundle",
+} satisfies Readonly<Record<string, ApplicationModuleClass>>);
+
+const windowOnlyPackages = ["/react/", "/react-dom/"];
+const windowRepositoryModules = new Set(["apps/web/index.html"]);
+const windowWorkspaceModules = new Set(["vault-domain/dist/items.js", "vault-domain/src/items.ts"]);
+const workerWorkspacePackages = new Set(["crypto", "protocol", "vault-domain"]);
+
+function normalizedPath(value: string): string {
+  return value.replaceAll("\\", "/");
 }
+
+function pathWithoutQuery(id: string): string {
+  return normalizedPath(id.split("?")[0] ?? id);
+}
+
+function applicationSourcePath(id: string): string | undefined {
+  const marker = "/apps/web/src/";
+  const path = pathWithoutQuery(id);
+  const markerIndex = path.lastIndexOf(marker);
+  return markerIndex === -1 ? undefined : path.slice(markerIndex + marker.length);
+}
+
+function workspaceSourcePath(id: string): string | undefined {
+  const marker = "/packages/";
+  const path = pathWithoutQuery(id);
+  const markerIndex = path.lastIndexOf(marker);
+  return markerIndex === -1 ? undefined : path.slice(markerIndex + marker.length);
+}
+
+function repositoryPath(id: string): string | undefined {
+  const path = pathWithoutQuery(id);
+  const prefix = `${repositoryRoot}/`;
+  return path.startsWith(prefix) ? path.slice(prefix.length) : undefined;
+}
+
+export function applicationModuleClass(id: string): ApplicationModuleClass | undefined {
+  const sourcePath = applicationSourcePath(id);
+  return sourcePath === undefined
+    ? undefined
+    : applicationModules[sourcePath as keyof typeof applicationModules];
+}
+
+export function isWindowModuleAllowed(id: string): boolean {
+  const sourcePath = applicationSourcePath(id);
+  if (sourcePath === "vault-worker-entry.ts" && id.endsWith("?worker&url")) return true;
+  if (sourcePath !== undefined) {
+    const moduleClass = applicationModuleClass(id);
+    return moduleClass === "window" || moduleClass === "shared";
+  }
+  const workspacePath = workspaceSourcePath(id);
+  if (workspacePath !== undefined) return windowWorkspaceModules.has(workspacePath);
+  const localPath = repositoryPath(id);
+  return (
+    localPath === undefined ||
+    localPath.startsWith("node_modules/") ||
+    windowRepositoryModules.has(localPath)
+  );
+}
+
+export function isWorkerModuleAllowed(id: string): boolean {
+  const sourcePath = applicationSourcePath(id);
+  if (sourcePath !== undefined) {
+    const moduleClass = applicationModuleClass(id);
+    return moduleClass === "worker" || moduleClass === "shared";
+  }
+  const workspacePath = workspaceSourcePath(id);
+  if (workspacePath !== undefined)
+    return workerWorkspacePackages.has(workspacePath.split("/")[0] ?? "");
+  const localPath = repositoryPath(id);
+  if (localPath !== undefined && !localPath.startsWith("node_modules/")) return false;
+  return !windowOnlyPackages.some((segment) => pathWithoutQuery(id).includes(segment));
+}
+
+function sourceFilesBelow(directory: string): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const absolute = resolve(directory, entry.name);
+    if (entry.isDirectory()) files.push(...sourceFilesBelow(absolute));
+    else if (entry.isFile()) {
+      if (/\.(?:[cm]?[jt]sx?|css|json)$/.test(entry.name))
+        files.push(relative(applicationSourceRoot, absolute).split(sep).join("/"));
+    } else throw new Error(`unsupported apps/web/src entry: ${absolute}`);
+  }
+  return files;
+}
+
+export function assertApplicationSourceInventory(sourceFiles: readonly string[]): void {
+  const declared = Object.keys(applicationModules).sort();
+  const actual = [...sourceFiles].sort();
+  if (JSON.stringify(actual) !== JSON.stringify(declared))
+    throw new Error(
+      `apps/web/src classification is incomplete: expected ${declared.join(", ")}; found ${actual.join(", ")}`,
+    );
+}
+
+assertApplicationSourceInventory(sourceFilesBelow(applicationSourceRoot));
 
 type GenerateBundle = NonNullable<Plugin["generateBundle"]>;
 
@@ -79,16 +180,8 @@ function enforceWindowBoundary(): Plugin {
     name: "neutron-window-boundary",
     generateBundle: enforceModuleBoundary(
       "window build",
-      (id) => hasFileName(id, ["main.tsx"]),
-      (id) =>
-        workerOnlyPackages.some((segment) => id.includes(segment)) ||
-        hasFileName(id, workerOnlyFiles),
-      // The window references the worker script by URL; it does not import it.
-      // Checked before the rule above, whose file-name match would otherwise
-      // reject this reference. Matched by name for the same reason as the rest:
-      // a directory-anchored predicate here would turn the window's own
-      // legitimate reference into a forbidden module the moment the worker moved.
-      (id) => hasFileName(id, ["vault-worker-entry.ts"]) && id.endsWith("?worker&url"),
+      (id) => applicationSourcePath(id) === "main.tsx" && !id.includes("?"),
+      (id) => !isWindowModuleAllowed(id),
     ),
   };
 }
@@ -98,10 +191,8 @@ function enforceVaultWorkerBoundary(): Plugin {
     name: "neutron-vault-worker-boundary",
     generateBundle: enforceModuleBoundary(
       "vault worker build",
-      (id) => hasFileName(id, ["vault-worker-entry.ts"]) && !id.includes("?"),
-      (id) =>
-        windowOnlyPackages.some((segment) => id.includes(segment)) ||
-        hasFileName(id, windowOnlyFiles),
+      (id) => applicationSourcePath(id) === "vault-worker-entry.ts" && !id.includes("?"),
+      (id) => !isWorkerModuleAllowed(id),
     ),
   };
 }

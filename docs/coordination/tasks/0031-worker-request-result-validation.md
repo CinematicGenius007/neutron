@@ -1,11 +1,11 @@
 # TASK 0031 — Worker request/result validation
 
-Status: active
-Owner: unassigned (remediation required after review)
+Status: review
+Owner: unassigned (handoff remediated by `/root`)
 Claimed: 2026-08-01T11:29:12Z
 Worktree/branch: shared-worktree (`main`)
-Reviewer: unassigned
-Review claimed: —
+Reviewer: `/root/task_0031_review`
+Review claimed: 2026-08-01T11:49:36Z
 Depends on: 0030
 Blocks: ADR-0016 idle auto-lock
 Security-sensitive: yes
@@ -121,6 +121,13 @@ git diff --check
   `vault-worker-entry-BSdqlPuJ.js` (663,184 bytes), and `index-uH94Wcke.css`
   (5,922 bytes). Cleared implementation ownership and assigned independent
   review of the committed candidate to `/root/task_0031_review`.
+- 2026-08-01T11:49:36Z — Accepted the review BLOCK recorded in `e81fdd1` and
+  applied its documentation-only remedy. Updated the handoff opening and
+  appended a current TASK-0031 checkpoint naming `fb2f458`, the atomic
+  same-build v2 rule, unconditional v1/mixed rejection, actual gate evidence,
+  current BLOCK, and next safe action. No product code changed. Returned the
+  task to the same independent reviewer for confirmation of the exact committed
+  remediation.
 
 ## Handoff
 

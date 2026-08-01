@@ -3,12 +3,12 @@
 Updated: 2026-08-01
 Branch: `main`
 Last committed checkpoint before Task 0024: `6d83747`
-Current checkpoint: TASK-0030 is done after independent review of exact
-remediation commit `a01f6f3`. The root build now executes the web bundle
-boundary and CI is configured to run the browser and production security gates;
-no connected CI execution is claimed. Task 0024's original review remains
-**not** repository-verifiable; TASK-0028 is the authoritative record of that
-evidence gap.
+Current checkpoint: TASK-0031 implementation commit `fb2f458` passed code and
+gate review but is not done. Independent review recorded one documentation P1
+in `e81fdd1`: this handoff had not recorded the internal worker protocol v2
+compatibility rule and still described TASK-0031 as unfiled. The appended
+TASK-0031 checkpoint at the end is the current resumption authority; historical
+queue statements remain evidence of earlier states, not current instructions.
 
 This is a navigation checkpoint, not a substitute for authoritative task files
 or accepted ADRs. Verify it against the repository before acting.
@@ -405,3 +405,47 @@ No connected CI run, external system, or deployment was inspected or claimed.
 TASK-0031 may now be planned and preflighted as the next queue item, but no
 TASK-0031 file exists. Do not change worker validation until the orchestrator
 creates, bounds, and assigns that task.
+
+## TASK-0031 handoff remediation — 2026-08-01T11:49:36Z — read this first
+
+TASK-0031 exists and implementation commit `fb2f458` is complete. It restores
+the worker-local request/result validation leg for `list-item-summaries`,
+`get-item`, `create-item`, `update-item`, and `delete-item`. Item-operation
+responses bind `vaultId`; get/update/delete bind item identity; create and
+update bind their generation/key-version invariants; summary pages enforce
+limit, cursor, order, uniqueness, and greatest-returned-ID pagination. Delete
+returns a receipt derived from the matched record after its conditional removal,
+not a request echo. The exact-shape response parser and window broker remain
+separate validation legs.
+
+The internal window/vault-worker contract is now protocol v2. Window and worker
+artifacts must come from the same atomic build. Protocol v1 requests/responses
+and every mixed v1/v2 pairing are rejected unconditionally at the exact
+`protocol` field; there is no compatibility shim or data migration. This
+changes no IndexedDB/persisted record, network/server protocol, crypto format,
+dependency, or server-visible metadata. The production harness's intentional
+external-worker conflict probe also sends v2.
+
+The latest implementation run passed frozen install, typecheck, lint/format across
+110 files, 13 files / 110 unit tests, root build with seven-file verification,
+browser tests (4 files / 35 Chromium and 3 files / 3 engine-matrix), production
+exact-CSP Chromium flow, and `git diff --check`, without retry. It emitted
+`index-DM6_k2C4.js` (315,355 bytes),
+`vault-worker-entry-BSdqlPuJ.js` (663,184 bytes), and
+`index-uH94Wcke.css` (5,922 bytes). Without retry, the reviewer independently
+reran the focused 27 tests, typecheck, lint/format, all 110 root tests, root
+build, both browser matrices, production exact-CSP flow, and diff check. The
+review record does not claim a second frozen install.
+
+Review of exact implementation commit `fb2f458` returned
+**BLOCK — P0 0 / P1 1 / P2 0** only because this handoff was byte-identical to
+its TASK-0030 parent and contradicted the checked handoff criterion. The code,
+protocol attacks, deletion provenance, and gates held. Review evidence is in
+TASK-0031 and committed at `e81fdd1`.
+
+TASK-0031 is back in `review` for confirmation of this documentation-only
+remediation. The next safe action is to have `/root/task_0031_review` inspect
+the exact remediation commit and close the task only if the handoff now matches
+the task and repository. Do not start ADR-0016, idle auto-lock, or any other new
+task before TASK-0031 closes. No connected CI run, deployment, Stage 5 approval,
+or permission to use real credentials is claimed.

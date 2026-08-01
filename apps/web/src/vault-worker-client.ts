@@ -106,6 +106,7 @@ interface PendingRequest {
   readonly expectedKind: string;
   readonly expectedItemId?: string;
   readonly expectedKeyVersion?: number;
+  readonly expectedVaultId?: string;
   readonly listCursor?: string;
   readonly listLimit?: number;
   readonly operation: VaultWorkerOperation;
@@ -127,6 +128,7 @@ interface ResponseExpectation {
   readonly expectedGeneration?: string;
   readonly expectedItemId?: string;
   readonly expectedKeyVersion?: number;
+  readonly expectedVaultId?: string;
   readonly listCursor?: string;
   readonly listLimit?: number;
   readonly passphraseGeneratorOptions?: PassphraseGeneratorOptionsV1;
@@ -145,6 +147,8 @@ function validateOperationResult(
   result: Record<string, unknown>,
   nowMilliseconds: number,
 ): void {
+  if (pending.expectedVaultId !== undefined && result.vaultId !== pending.expectedVaultId)
+    throw new VaultWorkerProtocolFailure();
   if (pending.passphraseGeneratorOptions !== undefined)
     validateGeneratedPassphrase(result.passphrase, pending.passphraseGeneratorOptions);
   if (pending.passwordGeneratorOptions !== undefined)
@@ -164,12 +168,17 @@ function validateOperationResult(
       throw new TotpReceiptExpiredFailure();
   }
   if (pending.expectedItemId !== undefined) {
-    const value = result.kind === "item" ? result.item : result.revision;
+    const value =
+      result.kind === "item"
+        ? result.item
+        : result.kind === "deleted"
+          ? result.deletion
+          : result.revision;
     if (value !== null && resultRecord(value).id !== pending.expectedItemId)
       throw new VaultWorkerProtocolFailure();
   }
   if (pending.expectedGeneration !== undefined || pending.expectedKeyVersion !== undefined) {
-    const revision = resultRecord(result.revision);
+    const revision = resultRecord(result.kind === "deleted" ? result.deletion : result.revision);
     if (
       revision.generation !== pending.expectedGeneration ||
       revision.keyVersion !== pending.expectedKeyVersion
@@ -181,7 +190,7 @@ function validateOperationResult(
   const issues = result.issues as readonly Readonly<{ id: string }>[];
   if (items.length + issues.length > pending.listLimit) throw new VaultWorkerProtocolFailure();
   const ids = new Set<string>();
-  let maximum = pending.listCursor;
+  let maximum: string | undefined;
   for (const values of [items, issues]) {
     let previous = pending.listCursor;
     for (let index = 0; index < values.length; index += 1) {
@@ -368,10 +377,14 @@ export class VaultWorkerClient {
         { vaultId, limit, ...(cursor === undefined ? {} : { cursor }) },
         "summaries",
         false,
-        { listLimit: limit, ...(cursor === undefined ? {} : { listCursor: cursor }) },
+        {
+          expectedVaultId: vaultId,
+          listLimit: limit,
+          ...(cursor === undefined ? {} : { listCursor: cursor }),
+        },
       ),
     );
-    const { kind: _kind, ...page } = result;
+    const { kind: _kind, vaultId: _vaultId, ...page } = result;
     return page as unknown as VaultWorkerSummaryPage;
   }
 
@@ -379,6 +392,7 @@ export class VaultWorkerClient {
     const result = resultRecord(
       await this.#call("get-item", { vaultId, itemId }, "item", false, {
         expectedItemId: itemId,
+        expectedVaultId: vaultId,
       }),
     );
     return result.item === null ? undefined : (result.item as VaultWorkerItemRecord);
@@ -447,6 +461,7 @@ export class VaultWorkerClient {
       await this.#call("create-item", { vaultId, item }, "revision", false, {
         expectedGeneration: "1",
         expectedKeyVersion: 1,
+        expectedVaultId: vaultId,
       }),
     );
     return result.revision as VaultWorkerRevision;
@@ -475,6 +490,7 @@ export class VaultWorkerClient {
           expectedGeneration,
           expectedItemId: itemId,
           expectedKeyVersion: keyVersion,
+          expectedVaultId: vaultId,
         },
       ),
     );
@@ -487,7 +503,12 @@ export class VaultWorkerClient {
     generation: string,
     keyVersion: number,
   ): Promise<void> {
-    await this.#call("delete-item", { vaultId, itemId, generation, keyVersion }, "done");
+    await this.#call("delete-item", { vaultId, itemId, generation, keyVersion }, "deleted", false, {
+      expectedGeneration: generation,
+      expectedItemId: itemId,
+      expectedKeyVersion: keyVersion,
+      expectedVaultId: vaultId,
+    });
   }
 
   async lock(): Promise<void> {

@@ -12,9 +12,10 @@ import {
 import {
   parseVaultWorkerRequest,
   parseVaultWorkerResponse,
+  VAULT_WORKER_PROTOCOL,
   VaultWorkerProtocolFailure,
 } from "../src/vault-worker-protocol.js";
-import { VaultWorkerRuntime } from "../src/vault-worker-runtime.js";
+import { VaultWorkerRuntime, validateItemOperationResult } from "../src/vault-worker-runtime.js";
 
 const login: VaultItem = {
   schemaVersion: 1,
@@ -40,7 +41,7 @@ const totpItem: VaultItem = {
 const validPassphrase = "abacus.abdomen.abdominal.abide.abiding.ability.ablaze.abnormal";
 
 function request(operation: string, input: unknown = {}) {
-  return { protocol: 1, requestId: "1", sessionEpoch: "0", operation, input };
+  return { protocol: VAULT_WORKER_PROTOCOL, requestId: "1", sessionEpoch: "0", operation, input };
 }
 
 class LoopbackWorker implements VaultWorkerLike {
@@ -86,6 +87,9 @@ class LoopbackWorker implements VaultWorkerLike {
 describe("vault worker protocol", () => {
   it("rejects aliases, extra fields, malformed uint64 values, and accessors without invoking them", () => {
     expect(() => parseVaultWorkerRequest(request("state"))).not.toThrow();
+    expect(() => parseVaultWorkerRequest({ ...request("state"), protocol: 1 })).toThrow(
+      VaultWorkerProtocolFailure,
+    );
     for (const requestId of [0, 1, "01", "-1", "1e2", "18446744073709551616"])
       expect(() => parseVaultWorkerRequest({ ...request("state"), requestId })).toThrow(
         VaultWorkerProtocolFailure,
@@ -220,7 +224,7 @@ describe("vault worker protocol", () => {
       );
     expect(() =>
       parseVaultWorkerResponse({
-        protocol: 1,
+        protocol: VAULT_WORKER_PROTOCOL,
         requestId: "1",
         sessionEpoch: "0",
         operation: "generate-password",
@@ -234,7 +238,7 @@ describe("vault worker protocol", () => {
     ])
       expect(() =>
         parseVaultWorkerResponse({
-          protocol: 1,
+          protocol: VAULT_WORKER_PROTOCOL,
           requestId: "1",
           sessionEpoch: "0",
           operation: "generate-passphrase",
@@ -243,7 +247,7 @@ describe("vault worker protocol", () => {
         }),
       ).toThrow(VaultWorkerProtocolFailure);
     const totpResponse = {
-      protocol: 1,
+      protocol: VAULT_WORKER_PROTOCOL,
       requestId: "1",
       sessionEpoch: "1",
       operation: "compute-totp",
@@ -271,9 +275,25 @@ describe("vault worker protocol", () => {
       expect(() => parseVaultWorkerResponse({ ...totpResponse, result })).toThrow(
         VaultWorkerProtocolFailure,
       );
+    const deletedResponse = {
+      protocol: VAULT_WORKER_PROTOCOL,
+      requestId: "1",
+      sessionEpoch: "0",
+      operation: "delete-item",
+      ok: true,
+      result: {
+        kind: "deleted",
+        vaultId: "1".repeat(32),
+        deletion: { id: "2".repeat(32), generation: "1", keyVersion: 1 },
+      },
+    };
+    expect(() => parseVaultWorkerResponse(deletedResponse)).not.toThrow();
+    expect(() =>
+      parseVaultWorkerResponse({ ...deletedResponse, result: { kind: "done" } }),
+    ).toThrow(VaultWorkerProtocolFailure);
     expect(() =>
       parseVaultWorkerResponse({
-        protocol: 1,
+        protocol: VAULT_WORKER_PROTOCOL,
         requestId: "1",
         sessionEpoch: "0",
         operation: "lock",
@@ -284,7 +304,7 @@ describe("vault worker protocol", () => {
     ).toThrow(VaultWorkerProtocolFailure);
     expect(() =>
       parseVaultWorkerResponse({
-        protocol: 1,
+        protocol: VAULT_WORKER_PROTOCOL,
         requestId: "1",
         sessionEpoch: "1",
         operation: "unlock",
@@ -304,20 +324,21 @@ describe("vault worker protocol", () => {
     ).toThrow(VaultWorkerProtocolFailure);
     expect(() =>
       parseVaultWorkerResponse({
-        protocol: 1,
+        protocol: VAULT_WORKER_PROTOCOL,
         requestId: "1",
         sessionEpoch: "0",
         operation: "create-item",
         ok: true,
         result: {
           kind: "revision",
+          vaultId: "1".repeat(32),
           revision: { id: "1".repeat(32), generation: "0", keyVersion: 1 },
         },
       }),
     ).toThrow(VaultWorkerProtocolFailure);
     expect(() =>
       parseVaultWorkerResponse({
-        protocol: 1,
+        protocol: VAULT_WORKER_PROTOCOL,
         requestId: "1",
         sessionEpoch: "0",
         operation: "lock",
@@ -327,7 +348,7 @@ describe("vault worker protocol", () => {
     ).toThrow(VaultWorkerProtocolFailure);
     expect(() =>
       parseVaultWorkerResponse({
-        protocol: 1,
+        protocol: VAULT_WORKER_PROTOCOL,
         requestId: "1",
         sessionEpoch: "0",
         operation: "state",
@@ -337,7 +358,7 @@ describe("vault worker protocol", () => {
     ).toThrow(VaultWorkerProtocolFailure);
     expect(() =>
       parseVaultWorkerResponse({
-        protocol: 1,
+        protocol: VAULT_WORKER_PROTOCOL,
         requestId: "1",
         sessionEpoch: "0",
         operation: "state",
@@ -345,6 +366,110 @@ describe("vault worker protocol", () => {
         error: "unlock-failed",
       }),
     ).toThrow(VaultWorkerProtocolFailure);
+  });
+
+  it("rejects request-mismatched item results inside the worker", () => {
+    const vaultId = "1".repeat(32);
+    const itemId = "2".repeat(32);
+    const nextId = "3".repeat(32);
+    const lastId = "4".repeat(32);
+    const parsed = (operation: string, input: unknown) =>
+      parseVaultWorkerRequest(request(operation, input));
+    const assertInvalid = (workerRequest: ReturnType<typeof parsed>, results: unknown[]) => {
+      for (const result of results)
+        expect(() => validateItemOperationResult(workerRequest, result)).toThrowError(
+          expect.objectContaining({ code: "corrupt-state" }),
+        );
+    };
+
+    const listRequest = parsed("list-item-summaries", { vaultId, cursor: itemId, limit: 2 });
+    const summary = {
+      id: nextId,
+      generation: "1",
+      keyVersion: 1,
+      title: "Synthetic summary",
+      type: "login",
+    };
+    const issue = { code: "corrupt-item", id: lastId };
+    const validList = {
+      kind: "summaries",
+      vaultId,
+      items: [summary],
+      issues: [issue],
+      nextCursor: lastId,
+    };
+    expect(() => validateItemOperationResult(listRequest, validList)).not.toThrow();
+    assertInvalid(listRequest, [
+      { ...validList, vaultId: "f".repeat(32) },
+      { ...validList, items: [summary, { ...summary, id: lastId }] },
+      { ...validList, issues: [{ ...issue, id: nextId }] },
+      { ...validList, items: [{ ...summary, id: itemId }] },
+      { ...validList, items: [{ ...summary, id: lastId }, summary], issues: [] },
+      { ...validList, nextCursor: nextId },
+      { ...validList, items: [], issues: [], nextCursor: itemId },
+    ]);
+
+    const getRequest = parsed("get-item", { vaultId, itemId });
+    const validItem = {
+      kind: "item",
+      vaultId,
+      item: { id: itemId, generation: "1", keyVersion: 1, item: login },
+    };
+    expect(() => validateItemOperationResult(getRequest, validItem)).not.toThrow();
+    assertInvalid(getRequest, [
+      { ...validItem, vaultId: lastId },
+      { ...validItem, item: { ...validItem.item, id: nextId } },
+    ]);
+
+    const createRequest = parsed("create-item", { vaultId, item: login });
+    const validCreate = {
+      kind: "revision",
+      vaultId,
+      revision: { id: itemId, generation: "1", keyVersion: 1 },
+    };
+    expect(() => validateItemOperationResult(createRequest, validCreate)).not.toThrow();
+    assertInvalid(createRequest, [
+      { ...validCreate, vaultId: lastId },
+      { ...validCreate, revision: { ...validCreate.revision, generation: "2" } },
+      { ...validCreate, revision: { ...validCreate.revision, keyVersion: 2 } },
+    ]);
+
+    const updateRequest = parsed("update-item", {
+      vaultId,
+      itemId,
+      generation: "7",
+      keyVersion: 3,
+      item: login,
+    });
+    const validUpdate = {
+      kind: "revision",
+      vaultId,
+      revision: { id: itemId, generation: "8", keyVersion: 3 },
+    };
+    expect(() => validateItemOperationResult(updateRequest, validUpdate)).not.toThrow();
+    assertInvalid(updateRequest, [
+      { ...validUpdate, revision: { ...validUpdate.revision, id: nextId } },
+      { ...validUpdate, revision: { ...validUpdate.revision, generation: "9" } },
+      { ...validUpdate, revision: { ...validUpdate.revision, keyVersion: 4 } },
+    ]);
+
+    const deleteRequest = parsed("delete-item", {
+      vaultId,
+      itemId,
+      generation: "8",
+      keyVersion: 3,
+    });
+    const validDelete = {
+      kind: "deleted",
+      vaultId,
+      deletion: { id: itemId, generation: "8", keyVersion: 3 },
+    };
+    expect(() => validateItemOperationResult(deleteRequest, validDelete)).not.toThrow();
+    assertInvalid(deleteRequest, [
+      { ...validDelete, deletion: { ...validDelete.deletion, id: nextId } },
+      { ...validDelete, deletion: { ...validDelete.deletion, generation: "7" } },
+      { ...validDelete, deletion: { ...validDelete.deletion, keyVersion: 2 } },
+    ]);
   });
 });
 
@@ -689,7 +814,7 @@ describe("vault worker boundary", () => {
       worker.onmessage?.(
         new MessageEvent("message", {
           data: {
-            protocol: 1,
+            protocol: VAULT_WORKER_PROTOCOL,
             requestId: "1",
             sessionEpoch: "0",
             operation: "compute-totp",
@@ -744,7 +869,7 @@ describe("vault worker boundary", () => {
     worker.onmessage?.(
       new MessageEvent("message", {
         data: {
-          protocol: 1,
+          protocol: VAULT_WORKER_PROTOCOL,
           requestId: "1",
           sessionEpoch: "0",
           operation: "generate-password",
@@ -790,7 +915,7 @@ describe("vault worker boundary", () => {
       worker.onmessage?.(
         new MessageEvent("message", {
           data: {
-            protocol: 1,
+            protocol: VAULT_WORKER_PROTOCOL,
             requestId: "1",
             sessionEpoch: "0",
             operation: "generate-passphrase",
@@ -820,7 +945,7 @@ describe("vault worker boundary", () => {
     worker.onmessage?.(
       new MessageEvent("message", {
         data: {
-          protocol: 1,
+          protocol: VAULT_WORKER_PROTOCOL,
           requestId: "1",
           sessionEpoch: "0",
           operation: "state",
@@ -848,13 +973,14 @@ describe("vault worker boundary", () => {
     createWorker.onmessage?.(
       new MessageEvent("message", {
         data: {
-          protocol: 1,
+          protocol: VAULT_WORKER_PROTOCOL,
           requestId: "1",
           sessionEpoch: "0",
           operation: "update-item",
           ok: true,
           result: {
             kind: "revision",
+            vaultId: "1".repeat(32),
             revision: { id: "2".repeat(32), generation: "1", keyVersion: 1 },
           },
         },
@@ -874,13 +1000,14 @@ describe("vault worker boundary", () => {
     readWorker.onmessage?.(
       new MessageEvent("message", {
         data: {
-          protocol: 1,
+          protocol: VAULT_WORKER_PROTOCOL,
           requestId: "1",
           sessionEpoch: "0",
           operation: "get-item",
           ok: true,
           result: {
             kind: "item",
+            vaultId: "1".repeat(32),
             item: {
               id: "3".repeat(32),
               generation: "1",
@@ -892,6 +1019,101 @@ describe("vault worker boundary", () => {
       }),
     );
     await expect(reading).rejects.toMatchObject({ code: "invalid-worker-response" });
+  });
+
+  it("rejects schema-valid wrong-vault pages and forged deletion receipts", async () => {
+    let pageTerminated = false;
+    const pageWorker: VaultWorkerLike = {
+      onerror: null,
+      onmessage: null,
+      onmessageerror: null,
+      postMessage() {},
+      terminate() {
+        pageTerminated = true;
+      },
+    };
+    const pageClient = new VaultWorkerClient(pageWorker);
+    const listing = pageClient.listItemSummaries("1".repeat(32), 1);
+    pageWorker.onmessage?.(
+      new MessageEvent("message", {
+        data: {
+          protocol: VAULT_WORKER_PROTOCOL,
+          requestId: "1",
+          sessionEpoch: "0",
+          operation: "list-item-summaries",
+          ok: true,
+          result: {
+            kind: "summaries",
+            vaultId: "2".repeat(32),
+            items: [],
+            issues: [],
+          },
+        },
+      }),
+    );
+    await expect(listing).rejects.toMatchObject({ code: "invalid-worker-response" });
+    expect(pageTerminated).toBe(true);
+
+    const cursorWorker: VaultWorkerLike = {
+      onerror: null,
+      onmessage: null,
+      onmessageerror: null,
+      postMessage() {},
+      terminate() {},
+    };
+    const cursorClient = new VaultWorkerClient(cursorWorker);
+    const cursor = "2".repeat(32);
+    const emptyPage = cursorClient.listItemSummaries("1".repeat(32), 1, cursor);
+    cursorWorker.onmessage?.(
+      new MessageEvent("message", {
+        data: {
+          protocol: VAULT_WORKER_PROTOCOL,
+          requestId: "1",
+          sessionEpoch: "0",
+          operation: "list-item-summaries",
+          ok: true,
+          result: {
+            kind: "summaries",
+            vaultId: "1".repeat(32),
+            items: [],
+            issues: [],
+            nextCursor: cursor,
+          },
+        },
+      }),
+    );
+    await expect(emptyPage).rejects.toMatchObject({ code: "invalid-worker-response" });
+
+    let deletionTerminated = false;
+    const deletionWorker: VaultWorkerLike = {
+      onerror: null,
+      onmessage: null,
+      onmessageerror: null,
+      postMessage() {},
+      terminate() {
+        deletionTerminated = true;
+      },
+    };
+    const deletionClient = new VaultWorkerClient(deletionWorker);
+    const deleting = deletionClient.deleteItem("1".repeat(32), "2".repeat(32), "7", 3);
+    deletionWorker.onmessage?.(
+      new MessageEvent("message", {
+        data: {
+          protocol: VAULT_WORKER_PROTOCOL,
+          requestId: "1",
+          sessionEpoch: "0",
+          operation: "delete-item",
+          ok: true,
+          result: {
+            kind: "deleted",
+            vaultId: "1".repeat(32),
+            deletion: { id: "3".repeat(32), generation: "7", keyVersion: 3 },
+          },
+        },
+      }),
+    );
+    await expect(deleting).rejects.toMatchObject({ code: "invalid-worker-response" });
+    expect(deletionTerminated).toBe(true);
   });
 
   it("rejects invalid summary ordering and snapshots requests before posting", async () => {
@@ -913,13 +1135,14 @@ describe("vault worker boundary", () => {
     worker.onmessage?.(
       new MessageEvent("message", {
         data: {
-          protocol: 1,
+          protocol: VAULT_WORKER_PROTOCOL,
           requestId: "1",
           sessionEpoch: "0",
           operation: "list-item-summaries",
           ok: true,
           result: {
             kind: "summaries",
+            vaultId: "1".repeat(32),
             items: [
               { id: "3".repeat(32), generation: "1", keyVersion: 1, title: "B", type: "login" },
               { id: "2".repeat(32), generation: "1", keyVersion: 1, title: "A", type: "login" },
@@ -1001,7 +1224,7 @@ describe("vault worker boundary", () => {
     worker.onmessage?.(
       new MessageEvent("message", {
         data: {
-          protocol: 1,
+          protocol: VAULT_WORKER_PROTOCOL,
           requestId: "1",
           sessionEpoch: "0",
           operation: "generate-passphrase",
@@ -1013,7 +1236,7 @@ describe("vault worker boundary", () => {
     worker.onmessage?.(
       new MessageEvent("message", {
         data: {
-          protocol: 1,
+          protocol: VAULT_WORKER_PROTOCOL,
           requestId: "2",
           sessionEpoch: "1",
           operation: "lock",

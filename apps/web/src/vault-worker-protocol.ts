@@ -9,7 +9,7 @@ import {
   parsePasswordGeneratorOptions,
 } from "./password-generator.js";
 
-export const VAULT_WORKER_PROTOCOL = 1 as const;
+export const VAULT_WORKER_PROTOCOL = 2 as const;
 export const MAX_SUMMARY_PAGE_SIZE = 100;
 
 const uint64Pattern = /^(0|[1-9][0-9]{0,19})$/;
@@ -35,7 +35,7 @@ export type VaultWorkerOperation =
 export type VaultWorkerState = "locked" | "pending-enrollment" | "unlocked";
 
 export interface VaultWorkerRequest {
-  readonly protocol: 1;
+  readonly protocol: 2;
   readonly requestId: string;
   readonly sessionEpoch: string;
   readonly operation: VaultWorkerOperation;
@@ -43,7 +43,7 @@ export interface VaultWorkerRequest {
 }
 
 export interface VaultWorkerSuccess {
-  readonly protocol: 1;
+  readonly protocol: 2;
   readonly requestId: string;
   readonly sessionEpoch: string;
   readonly operation: VaultWorkerOperation;
@@ -52,7 +52,7 @@ export interface VaultWorkerSuccess {
 }
 
 export interface VaultWorkerError {
-  readonly protocol: 1;
+  readonly protocol: 2;
   readonly requestId: string;
   readonly sessionEpoch: string;
   readonly operation: VaultWorkerOperation;
@@ -433,15 +433,28 @@ function parseResult(candidate: unknown): unknown {
       return Object.freeze({ kind, metadata: parseMetadata(result.metadata) });
     }
     case "item": {
-      const result = exact(value, ["kind", "item"]);
+      const result = exact(value, ["kind", "vaultId", "item"]);
       return Object.freeze({
         kind,
+        vaultId: id(result.vaultId),
         item: result.item === null ? null : parseItemRecord(result.item),
       });
     }
     case "revision": {
-      const result = exact(value, ["kind", "revision"]);
-      return Object.freeze({ kind, revision: parseRevision(result.revision) });
+      const result = exact(value, ["kind", "vaultId", "revision"]);
+      return Object.freeze({
+        kind,
+        vaultId: id(result.vaultId),
+        revision: parseRevision(result.revision),
+      });
+    }
+    case "deleted": {
+      const result = exact(value, ["kind", "vaultId", "deletion"]);
+      return Object.freeze({
+        kind,
+        vaultId: id(result.vaultId),
+        deletion: parseRevision(result.deletion),
+      });
     }
     case "generated-password": {
       const result = exact(value, ["kind", "password"]);
@@ -489,7 +502,7 @@ function parseResult(candidate: unknown): unknown {
       });
     }
     case "summaries": {
-      const result = exact(value, ["kind", "items", "issues"], ["nextCursor"]);
+      const result = exact(value, ["kind", "vaultId", "items", "issues"], ["nextCursor"]);
       const sourceItems = array(result.items, MAX_SUMMARY_PAGE_SIZE);
       const sourceIssues = array(result.issues, MAX_SUMMARY_PAGE_SIZE);
       const items: unknown[] = [];
@@ -520,6 +533,7 @@ function parseResult(candidate: unknown): unknown {
       }
       return Object.freeze({
         kind,
+        vaultId: id(result.vaultId),
         items: Object.freeze(items),
         issues: Object.freeze(issues),
         ...(Object.hasOwn(result, "nextCursor") ? { nextCursor: id(result.nextCursor) } : {}),
@@ -578,8 +592,9 @@ function expectedResultKind(operation: VaultWorkerOperation): string {
     case "create-item":
     case "update-item":
       return "revision";
-    case "cancel-enrollment":
     case "delete-item":
+      return "deleted";
+    case "cancel-enrollment":
     case "lock":
       return "done";
     default: {
@@ -677,7 +692,7 @@ export function parseVaultWorkerResponse(candidate: unknown): VaultWorkerRespons
     const result = parseResult(value.result);
     if (resultRecordKind(result) !== expectedResultKind(parsedOperation)) fail();
     return Object.freeze({
-      protocol: 1,
+      protocol: VAULT_WORKER_PROTOCOL,
       requestId,
       sessionEpoch,
       operation: parsedOperation,
@@ -689,7 +704,7 @@ export function parseVaultWorkerResponse(candidate: unknown): VaultWorkerRespons
   const error = workerError(value.error);
   if (!operationAllowsError(parsedOperation, error)) fail();
   return Object.freeze({
-    protocol: 1,
+    protocol: VAULT_WORKER_PROTOCOL,
     requestId,
     sessionEpoch,
     operation: parsedOperation,

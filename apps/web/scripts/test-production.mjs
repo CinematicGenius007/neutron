@@ -9,6 +9,7 @@ import { verifyBuild } from "./verify-build.mjs";
 
 const applicationRoot = fileURLToPath(new URL("../", import.meta.url));
 const outputRoot = join(applicationRoot, "dist");
+const vaultWorkerProtocol = 2;
 const contentSecurityPolicy =
   "default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'; script-src 'self' 'wasm-unsafe-eval'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self'; font-src 'none'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; child-src 'none'; frame-src 'none'; media-src 'none'; require-trusted-types-for 'script'; trusted-types neutron-static-script-url; upgrade-insecure-requests";
 const permissionsPolicy =
@@ -92,7 +93,7 @@ async function activateWithKeyboard(page, locator) {
 
 async function externalUpdate(page, password, matchTitle, replacementTitle) {
   return page.evaluate(
-    async ({ matchTitle, password, replacementTitle }) => {
+    async ({ matchTitle, password, protocol, replacementTitle }) => {
       const worker = globalThis.__neutronCreateCapturedWorker();
       const call = (message) =>
         new Promise((resolve, reject) => {
@@ -107,7 +108,7 @@ async function externalUpdate(page, password, matchTitle, replacementTitle) {
         });
       try {
         const unlocked = await call({
-          protocol: 1,
+          protocol,
           requestId: "1",
           sessionEpoch: "0",
           operation: "unlock",
@@ -115,7 +116,7 @@ async function externalUpdate(page, password, matchTitle, replacementTitle) {
         });
         const vaultId = unlocked.result.metadata.vaults[0].id;
         const listed = await call({
-          protocol: 1,
+          protocol,
           requestId: "2",
           sessionEpoch: "1",
           operation: "list-item-summaries",
@@ -124,7 +125,7 @@ async function externalUpdate(page, password, matchTitle, replacementTitle) {
         const summary = listed.result.items.find((item) => item.title === matchTitle);
         if (summary === undefined) throw new Error("target summary missing");
         const read = await call({
-          protocol: 1,
+          protocol,
           requestId: "3",
           sessionEpoch: "1",
           operation: "get-item",
@@ -133,7 +134,7 @@ async function externalUpdate(page, password, matchTitle, replacementTitle) {
         const base = read.result.item;
         if (base === null) throw new Error("target item missing");
         const updated = await call({
-          protocol: 1,
+          protocol,
           requestId: "4",
           sessionEpoch: "1",
           operation: "update-item",
@@ -146,7 +147,7 @@ async function externalUpdate(page, password, matchTitle, replacementTitle) {
           },
         });
         await call({
-          protocol: 1,
+          protocol,
           requestId: "5",
           sessionEpoch: "1",
           operation: "lock",
@@ -157,7 +158,7 @@ async function externalUpdate(page, password, matchTitle, replacementTitle) {
         worker.terminate();
       }
     },
-    { matchTitle, password, replacementTitle },
+    { matchTitle, password, protocol: vaultWorkerProtocol, replacementTitle },
   );
 }
 

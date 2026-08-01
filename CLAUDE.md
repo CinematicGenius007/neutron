@@ -111,13 +111,13 @@ as the reference style.
   broker checks it against an expectation captured *before* the request was
   sent. Do not collapse these, and do not remove one because it looks redundant.
 
-  All three legs exist today for only three of the fourteen worker operations:
-  `compute-totp`, `generate-password`, and `generate-passphrase`. The worker's
-  own leg is **absent** for `get-item`, `list-item-summaries`, `create-item`,
-  `update-item`, and `delete-item`. Treat the rule as binding on new code, and
-  do not describe the existing code as fully triple-validated. Restoring the
-  missing leg is queued but not yet filed as a task; see the remediation queue
-  in `docs/coordination/HANDOFF.md`.
+  The three legs are explicit for `compute-totp`, `generate-password`,
+  `generate-passphrase`, `get-item`, `list-item-summaries`, `create-item`,
+  `update-item`, and `delete-item`. The five item operations use the worker-local
+  `validateItemOperationResult`, the global `parseVaultWorkerResponse`, and the
+  window client's captured expectation. Do not treat exact global parsing or
+  request/response correlation as a substitute for the operation-specific
+  worker and client checks.
 - **Clear owned byte buffers in `finally`, on success and failure**, and say in
   comments that this is best effort.
 - Strict TypeScript, no `any` at a trust boundary, no non-null assertions.

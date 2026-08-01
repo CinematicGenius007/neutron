@@ -80,6 +80,12 @@ export interface VaultItemSummaryPage {
   readonly nextCursor?: string;
 }
 
+export interface VaultItemDeletionReceipt {
+  readonly generation: bigint;
+  readonly id: string;
+  readonly keyVersion: number;
+}
+
 type InternalItem =
   | Readonly<{
       generation: bigint;
@@ -676,7 +682,7 @@ export class LocalVaultSession {
     itemId: unknown,
     expected: unknown,
     expectedVersion: unknown,
-  ): Promise<void> {
+  ): Promise<VaultItemDeletionReceipt> {
     const epoch = this.#beginOperation();
     const vault = this.#vault(vaultId, epoch);
     const id = hex(fromHexId(itemId));
@@ -706,6 +712,11 @@ export class LocalVaultSession {
       throw error;
     }
     this.#assertOperation(epoch);
+    return Object.freeze({
+      generation: current.generation,
+      id: current.id,
+      keyVersion: current.keyVersion,
+    });
   }
 
   lock(): void {

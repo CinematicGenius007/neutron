@@ -362,7 +362,13 @@ describe("offline enrollment and session", () => {
 
     const deleted = created[1];
     if (deleted === undefined) throw new Error("missing item");
-    await firstSession.deleteItem(vaultId, deleted.id, deleted.generation, deleted.keyVersion);
+    await expect(
+      firstSession.deleteItem(vaultId, deleted.id, deleted.generation, deleted.keyVersion),
+    ).resolves.toEqual({
+      generation: deleted.generation,
+      id: deleted.id,
+      keyVersion: deleted.keyVersion,
+    });
     expect(await firstSession.getItem(vaultId, deleted.id)).toBeUndefined();
     expect(await repository.list()).toHaveLength(3 + 4 * 2);
 

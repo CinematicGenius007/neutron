@@ -49,6 +49,92 @@ function errorCode(error: unknown): VaultWorkerError["error"] {
   return error instanceof LocalVaultFailure ? error.code : "internal";
 }
 
+function corruptResult(): never {
+  throw new LocalVaultFailure("corrupt-state");
+}
+
+function resultRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) corruptResult();
+  return value as Record<string, unknown>;
+}
+
+function validateIdentity(
+  candidate: unknown,
+  expectedId: unknown,
+  expectedGeneration?: string,
+  expectedKeyVersion?: unknown,
+): void {
+  const identity = resultRecord(candidate);
+  if (
+    identity.id !== expectedId ||
+    (expectedGeneration !== undefined && identity.generation !== expectedGeneration) ||
+    (expectedKeyVersion !== undefined && identity.keyVersion !== expectedKeyVersion)
+  )
+    corruptResult();
+}
+
+export function validateItemOperationResult(request: VaultWorkerRequest, candidate: unknown): void {
+  const result = resultRecord(candidate);
+  const input = request.input;
+  switch (request.operation) {
+    case "list-item-summaries": {
+      if (result.kind !== "summaries" || result.vaultId !== input.vaultId) corruptResult();
+      if (!Array.isArray(result.items) || !Array.isArray(result.issues)) corruptResult();
+      if (result.items.length + result.issues.length > (input.limit as number)) corruptResult();
+      const seen = new Set<string>();
+      let maximum: string | undefined;
+      for (const values of [result.items, result.issues]) {
+        let previous = input.cursor as string | undefined;
+        for (const candidateValue of values) {
+          const value = resultRecord(candidateValue);
+          const itemId = value.id;
+          if (
+            typeof itemId !== "string" ||
+            (previous !== undefined && itemId <= previous) ||
+            seen.has(itemId)
+          )
+            corruptResult();
+          seen.add(itemId);
+          previous = itemId;
+          if (maximum === undefined || itemId > maximum) maximum = itemId;
+        }
+      }
+      if (
+        result.nextCursor !== undefined &&
+        (maximum === undefined || result.nextCursor !== maximum)
+      )
+        corruptResult();
+      return;
+    }
+    case "get-item":
+      if (result.kind !== "item" || result.vaultId !== input.vaultId) corruptResult();
+      if (result.item !== null) validateIdentity(result.item, input.itemId);
+      return;
+    case "create-item":
+      if (result.kind !== "revision" || result.vaultId !== input.vaultId) corruptResult();
+      {
+        const revision = resultRecord(result.revision);
+        if (revision.generation !== "1" || revision.keyVersion !== 1) corruptResult();
+      }
+      return;
+    case "update-item":
+      if (result.kind !== "revision" || result.vaultId !== input.vaultId) corruptResult();
+      validateIdentity(
+        result.revision,
+        input.itemId,
+        (BigInt(input.generation as string) + 1n).toString(),
+        input.keyVersion,
+      );
+      return;
+    case "delete-item":
+      if (result.kind !== "deleted" || result.vaultId !== input.vaultId) corruptResult();
+      validateIdentity(result.deletion, input.itemId, input.generation as string, input.keyVersion);
+      return;
+    default:
+      return;
+  }
+}
+
 export class VaultWorkerRuntime {
   readonly #dependencies: VaultWorkerRuntimeDependencies;
   readonly #port: VaultWorkerRuntimePort;
@@ -156,19 +242,25 @@ export class VaultWorkerRuntime {
           if (item === undefined) throw new LocalVaultFailure("corrupt-state");
           items[index] = { ...item, generation: item.generation.toString() };
         }
-        return {
+        const result = {
           kind: "summaries",
+          vaultId: input.vaultId,
           items,
           issues: page.issues,
           ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
         };
+        validateItemOperationResult(request, result);
+        return result;
       }
       case "get-item": {
         const item = await this.#requireSession().getItem(input.vaultId, input.itemId);
-        return {
+        const result = {
           kind: "item",
+          vaultId: input.vaultId,
           item: item === undefined ? null : { ...item, generation: item.generation.toString() },
         };
+        validateItemOperationResult(request, result);
+        return result;
       }
       case "compute-totp": {
         const item = await this.#requireSession().getItem(input.vaultId, input.itemId);
@@ -211,14 +303,17 @@ export class VaultWorkerRuntime {
       }
       case "create-item": {
         const item = await this.#requireSession().createItem(input.vaultId, input.item);
-        return {
+        const result = {
           kind: "revision",
+          vaultId: input.vaultId,
           revision: {
             id: item.id,
             generation: item.generation.toString(),
             keyVersion: item.keyVersion,
           },
         };
+        validateItemOperationResult(request, result);
+        return result;
       }
       case "update-item": {
         const item = await this.#requireSession().updateItem(
@@ -228,23 +323,37 @@ export class VaultWorkerRuntime {
           input.keyVersion,
           input.item,
         );
-        return {
+        const result = {
           kind: "revision",
+          vaultId: input.vaultId,
           revision: {
             id: item.id,
             generation: item.generation.toString(),
             keyVersion: item.keyVersion,
           },
         };
+        validateItemOperationResult(request, result);
+        return result;
       }
-      case "delete-item":
-        await this.#requireSession().deleteItem(
+      case "delete-item": {
+        const deletion = await this.#requireSession().deleteItem(
           input.vaultId,
           input.itemId,
           BigInt(input.generation as string),
           input.keyVersion,
         );
-        return { kind: "done" };
+        const result = {
+          kind: "deleted",
+          vaultId: input.vaultId,
+          deletion: {
+            id: deletion.id,
+            generation: deletion.generation.toString(),
+            keyVersion: deletion.keyVersion,
+          },
+        };
+        validateItemOperationResult(request, result);
+        return result;
+      }
       default: {
         const exhaustive: never = request.operation;
         return exhaustive;

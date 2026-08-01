@@ -26,9 +26,9 @@ recalled.
 
 ## 2. Assessment of the proposed sequencing
 
-Stage 2 in `docs/ROADMAP.md` still owes four things: passphrase generation,
-bounded local search, offline recovery-unlock UI, and the PWA service-worker
-install/update/rollback state machine.
+Stage 2 in `docs/ROADMAP.md` still owes three things: passphrase generation,
+bounded local search, and the PWA service-worker install/update/rollback state
+machine. Recovery unlock is separately blocked and is not a Stage 2 roadmap gap.
 
 Ranking them as "smallest next safe independently reviewable checkpoint":
 
@@ -36,12 +36,11 @@ Ranking them as "smallest next safe independently reviewable checkpoint":
 | --- | --- | --- | --- |
 | Passphrase generator | Small | One operation, one result kind | None once ADR 0014 lands |
 | Bounded local search | Medium | New query/summary shape and index policy | Needs an ADR on what an index shard may leak and how much plaintext is decrypted per query |
-| Recovery unlock UI | Medium | Reuses recovery codec; new unlock path | Interacts with Task 0009 (blocked) authentication/recovery spec |
 | Service-worker delivery | Large | Update/rollback state machine | Needs its own ADR and changes the delivery trust story in ADR 0008 |
 
 The handoff's choice is the right one and I am keeping it. Passphrase generation
 is the only remaining Stage 2 item whose entire risk surface is a data asset plus
-one worker operation that clones an already-reviewed pattern. The other three
+one worker operation that clones an already-reviewed pattern. The other two
 each open a question that deserves its own decision record first, and starting
 any of them now would mean writing an ADR about a subject nobody has preflighted.
 

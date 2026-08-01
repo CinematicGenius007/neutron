@@ -6,7 +6,7 @@ Claimed: —
 Worktree/branch: —
 Reviewer: unassigned
 Review claimed: —
-Depends on: 0018, 0020, 0021, 0025; accepted ADR 0014
+Depends on: 0018, 0020, 0021, 0025, 0026; accepted ADR 0014 and proposed ADR 0015
 Blocks: Stage 2 generator completeness
 Security-sensitive: yes
 
@@ -62,11 +62,14 @@ same bar as the password path rather than becoming a second dialect.
 - [ ] The bundled wordlist matches ADR 0014 exactly: 7,776 entries, the recorded
       canonical SHA-256 recomputed from the loaded list, the stated alphabet and
       length range, strict code-unit sort order, no entry containing the
-      separator, and an attribution header naming EFF, CC BY 4.0, the upstream
-      URL, and the retrieval date.
+      separator, and a complete exported and user-rendered attribution string
+      naming EFF, `CC-BY-4.0`, the license URI, upstream URL, retrieval date,
+      modification, and disclaimer reference. A source header is insufficient.
 - [ ] Word selection is independent, uniform, and unbiased over all 7,776
       indices using the ADR's 16-bit rejection sampler, with the exact bounded
       provider-return and byte-clearing behavior and a `words * 32` byte budget.
+      Output is constructed incrementally; no selected-index or selected-word
+      collection is created or retained.
 - [ ] A single named `generate-passphrase` worker operation is unlocked-only and
       independently validates its request, the standalone global response schema
       including list membership, the local worker result, and the broker's
@@ -94,7 +97,8 @@ same bar as the password path rather than becoming a second dialect.
       from origin-visible persistence before save, ciphertext-only persistence
       after save, absence from network, console, and static artifacts, and
       clearing from the DOM and origin storage on cancel, delete, and lock with a
-      fresh worker after unlock.
+      fresh worker after unlock. The same flow proves the complete attribution
+      survives emitted production and is rendered in the generator surface.
 - [ ] Built window and worker bundle sizes are measured and recorded before and
       after the change.
 - [ ] All repository gates and an independent adversarial security review pass.
@@ -129,6 +133,10 @@ sizes before and after, and any test retry with its exact cause.
   entropy-reducing sliding-window implementation, and the required attribution
   would not have survived minification. Both are now binding requirements above.
   Task sequenced behind Task 0025, which owns the shared build file.
+- 2026-08-01T00:45:11Z — Takeover audit blocked readiness with P0 0, P1 4,
+  P2 5. Task 0026 is now done and an explicit dependency. Proposed ADR 0015 must
+  close the selected-word collection channel and attribution mismatch, receive
+  independent review, and be accepted before this task may become ready.
 
 ## Handoff
 

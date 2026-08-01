@@ -16,6 +16,7 @@ Accepted ADRs are binding until superseded by a newer accepted ADR.
 | [0012](0012-password-generation-policy.md) | Accepted | CSPRNG-backed uniform password generation policy |
 | [0013](0013-rfc6238-totp-computation.md) | Accepted | Worker-bound RFC 6238 TOTP computation policy |
 | [0014](0014-passphrase-generation-policy.md) | Accepted | Digest-pinned EFF wordlist passphrase generation policy |
+| [0015](0015-passphrase-policy-audit-corrections.md) | Proposed | Close passphrase intermediate-state and audit gaps |
 
 Use [ADR_TEMPLATE.md](ADR_TEMPLATE.md) for a new decision. Do not edit the
 rationale of an accepted ADR to make a later choice appear inevitable; supersede

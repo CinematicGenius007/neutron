@@ -7,7 +7,7 @@ Worktree/branch: shared-worktree (main)
 Reviewer: `/root/task_0025_reviewer`
 Review claimed: 2026-08-01T05:10:00Z
 Depends on: —
-Blocks: —
+Blocks: 0023
 Security-sensitive: yes
 
 ## Outcome

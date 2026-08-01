@@ -1,6 +1,6 @@
 # TASK 0029 — UI review findings remediation
 
-Status: review
+Status: done
 Owner: unassigned (implemented by `/root`)
 Claimed: 2026-08-01T09:40:23Z
 Worktree/branch: shared-worktree (`main`)
@@ -72,7 +72,7 @@ and failures expose only redacted messages.
 - [x] No persistence, protocol, worker, crypto, dependency, metadata, or network
       behavior changes.
 - [x] No real secrets appear in code, tests, logs, or history.
-- [ ] A separate reviewer reviews an identifiable committed artifact and records
+- [x] A separate reviewer reviews an identifiable committed artifact and records
       P0/P1/P2 findings before closure.
 
 ## Verification
@@ -132,4 +132,38 @@ changed. The implementation awaits independent review of a committed artifact.
 
 ## Review
 
-Pending independent review of a committed artifact.
+Reviewed exact commit `7aa8a18` independently by `/root/task_0029_reviewer` on
+2026-08-01T09:50:36Z. Verdict: **PASS — P0 0 / P1 0 / P2 0**.
+
+The review traced the busy-state and epoch transitions rather than relying on
+the implementation notes. The app-level dirty-navigation fieldset disables
+both decisions for the complete rendered busy interval, including pagination;
+the browser regression holds the second-page request open, verifies both
+controls are disabled, attempts the discard action, and proves the draft and
+redacted status remain sound. Save and delete clear `navigationIntent` only
+after their broker mutation succeeds and the captured epoch is still current.
+The immediate lock path is unchanged and still clears state before its first
+`await`.
+
+Both standalone editor confirmation fieldsets now disable every descendant
+action while busy. The browser evidence compares synthetic secret values in
+the complete rendered HTML plus live form values, rather than depending on the
+old detail element IDs. The exact-CSP flow calls `runtimeSurfaceDump` after a
+real masked login, secure-note, backup-code, and JSON item is selected and
+scans each reveal-gated value appropriate to that item. The production diff
+does not change persistence, protocol, worker, cryptography, dependencies,
+metadata, or network behavior; all changed paths are declared by this task.
+
+Reviewer verification against `7aa8a18`:
+
+```text
+pnpm typecheck                               pass
+pnpm --filter @neutron/web test:browser      pass; 4 files / 35 Chromium tests,
+                                             3 files / 3 TOTP matrix tests
+pnpm --filter @neutron/web test:production   pass; Verified 7 production files;
+                                             Production CSP Chromium flow passed
+git diff --check                             pass
+```
+
+The implementer's broader nine-gate run remains recorded in the progress log;
+the reviewer did not claim to repeat commands beyond those listed above.

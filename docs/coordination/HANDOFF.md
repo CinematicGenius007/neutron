@@ -3,9 +3,10 @@
 Updated: 2026-08-01
 Branch: `main`
 Last committed checkpoint before Task 0024: `6d83747`
-Current checkpoint: Task 0024's code is implemented and every gate passes. Its
-original review is **not** repository-verifiable. TASK-0028 records that gap and
-is closed after independent review of exact commit `8186c3d`.
+Current checkpoint: TASK-0029 closes the independently re-reviewed Task 0024 UI
+findings and is done after independent review of exact implementation commit
+`7aa8a18`. Task 0024's original review remains **not** repository-verifiable;
+TASK-0028 is the authoritative record of that evidence gap.
 
 This is a navigation checkpoint, not a substitute for authoritative task files
 or accepted ADRs. Verify it against the repository before acting.
@@ -289,3 +290,23 @@ No persistence, protocol, worker, crypto, dependency, metadata, or network path
 changed. This is not approval: the implementation must be committed, moved to
 `review`, and independently reviewed at that exact commit before TASK-0029 can
 close. TASK-0030 and TASK-0031 remain queue labels without task files.
+
+## TASK-0029 closure — 2026-08-01T09:50:36Z
+
+An independent reviewer examined exact implementation commit `7aa8a18` and
+returned **PASS — P0 0 / P1 0 / P2 0**. TASK-0029 is `done`. The reviewer
+re-ran typecheck, the complete browser suite (4 files / 35 Chromium tests plus
+3 files / 3 TOTP matrix tests), the production build and exact-CSP Chromium
+flow (`Verified 7 production files`), and `git diff --check`; all passed.
+
+The review confirmed that dirty-navigation decisions and both standalone
+editor confirmation groups are disabled while busy, stale navigation intent is
+cleared only after successful epoch-valid save/delete completion, lock remains
+immediate, secret-reset browser assertions no longer rely on detail element
+IDs, and selected masked items are scanned through `runtimeSurfaceDump` in the
+production flow. The implementation changed no persistence, protocol, worker,
+crypto, dependency, metadata, or network path.
+
+The next safe action is to preflight and file TASK-0030 for boundary-enforcement
+hardening and CI gate wiring. No TASK-0030 file exists yet. Do not begin its
+implementation until the orchestrator has reserved, bounded, and assigned it.

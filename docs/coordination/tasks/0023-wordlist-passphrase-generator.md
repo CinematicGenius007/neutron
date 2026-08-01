@@ -4,8 +4,8 @@ Status: review
 Owner: unassigned
 Claimed: 2026-08-01T01:48:52Z
 Worktree/branch: shared-worktree (main)
-Reviewer: unassigned
-Review claimed: —
+Reviewer: `/root/task_0023_review`
+Review claimed: 2026-08-01T02:02:15Z
 Depends on: 0018, 0020, 0021, 0025, 0026; accepted ADR 0015 (supersedes 0014)
 Blocks: Stage 2 generator completeness
 Security-sensitive: yes

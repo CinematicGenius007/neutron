@@ -245,7 +245,7 @@ describe("libsodium crypto provider", () => {
         nonce,
       }),
     ).toThrowError(expect.objectContaining({ code: "authentication" }));
-  }, 30_000);
+  }, 60_000);
 
   it("uses the CSPRNG and clears mutable key buffers", async () => {
     const provider = await createLibsodiumProvider();

@@ -173,11 +173,28 @@ here because it bounds every "independent review PASS" in `HANDOFF.md`: those
 are self-reported claims in prose, with no signature, no separate identity, and
 no external attestation.
 
-**F4. CI has never run.** `git remote -v` returns nothing. There is no remote,
-therefore no GitHub Actions execution. `.github/workflows/ci.yml` is correctly
-configured — it does install pinned Playwright engines and does invoke
-`test:browser` and `test:production` — but it is configuration only. Every gate
-result in this repository, including this audit's, is single-machine evidence.
+**F4. CI has never run.** ~~`git remote -v` returns nothing.~~ **Closed
+2026-08-17.** At the time of the audit there was no remote and therefore no
+GitHub Actions execution; `.github/workflows/ci.yml` was configuration only.
+
+The user then configured `origin`, and `main` at `12a2ee6` was pushed. Run
+[32044474328](https://github.com/CinematicGenius007/neutron/actions/runs/32044474328)
+completed **success** on `ubuntu-24.04` in 2m16s, executing every step: frozen
+install, typecheck, lint, format check, unit tests, build, pinned Playwright
+engine install for Chromium/Firefox/WebKit, `test:browser`, and
+`test:production`.
+
+This is the first gate evidence in the project's history produced on a machine
+other than the author's, and it closes the finding for `main`. Two limits on the
+claim:
+
+- The run validated `main` at `12a2ee6`. The TASK-0033 candidate and the
+  proposed ADRs are on branch `task-0033-0035-experience-and-decisions` and have
+  **no** CI run; a pull request has not been opened.
+- The run reported a deprecation annotation: the three pinned action SHAs target
+  Node.js 20 and are being forced onto Node.js 24. The pins are correct practice
+  and should not be loosened, but they now need a deliberate bump. No task owns
+  it.
 
 ### P2 — product and delivery gaps
 

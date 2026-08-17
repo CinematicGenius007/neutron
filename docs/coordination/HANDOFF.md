@@ -750,9 +750,45 @@ agreement on Unicode default case folding (ADR 0017).
 If both are accepted, their worker-protocol increments must be sequenced rather
 than merged into one version.
 
+### Connected CI evidence now exists — 2026-08-17
+
+`origin` is `git@github.com:CinematicGenius007/neutron.git`. **The repository is
+public.** All 73 commits of history, every coordination record, and the audit
+above are world-readable.
+
+`main` at `12a2ee6` was pushed and CI run
+[32044474328](https://github.com/CinematicGenius007/neutron/actions/runs/32044474328)
+completed **success** on `ubuntu-24.04` in 2m16s, running every configured step
+including the pinned tri-engine Playwright install, `test:browser`, and
+`test:production`.
+
+Earlier sessions were required to say "this records workflow configuration, not
+a connected GitHub run". **That caveat no longer applies to `main` at
+`12a2ee6`.** It still applies to everything else.
+
+What is still **not** covered by connected CI:
+
+- Branch `task-0033-0035-experience-and-decisions` carries the TASK-0033
+  candidate and the two proposed ADRs. It has **no CI run**, because the
+  workflow triggers only on `main` pushes and pull requests, and no pull request
+  exists.
+- The pull request could not be opened from this session: the `gh` CLI is
+  authenticated as `dev-oddlyenough`, which is not a collaborator on
+  `CinematicGenius007/neutron`. Pushing worked because the SSH key belongs to the
+  repository owner. Opening the PR requires the owner, or `gh auth` as that
+  account.
+- CI reports a deprecation annotation: the three pinned action SHAs target
+  Node.js 20 and are forced onto Node.js 24. The pins are correct practice and
+  must not be loosened; bumping them needs its own task. None is authorized.
+
 ### Next safe action
 
-Unchanged in shape from the previous checkpoint: commit one identifiable
+Open the pull request for `task-0033-0035-experience-and-decisions` into `main`
+so its candidate receives connected CI evidence before any review verdict. Then
+proceed with the sequencing below. Do not merge on the strength of a green CI
+run; CI proves the gates pass, not that the work was reviewed.
+
+Otherwise unchanged in shape from the previous checkpoint: commit one identifiable
 candidate, move TASK-0033 to `review`, clear implementation ownership, and
 assign a separate reviewer. The redesign is broader than the original PX-1
 description, so the reviewer must be pointed at the extended progress-log entry

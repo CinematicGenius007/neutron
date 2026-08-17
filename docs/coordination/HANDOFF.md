@@ -605,3 +605,157 @@ ADR-0016 idle auto-lock preflight and proposal, followed by independent ADR
 review before implementation. Do not infer that idle auto-lock or the wider
 roadmap is complete. No connected CI run, deployment, Stage 5 approval, or
 permission to use real credentials is claimed.
+
+## TASK-0033 product-experience redesign checkpoint — 2026-08-08T04:11:28Z
+
+The user authorized a new UI/UX review, primary-source research, redesign plan,
+and implementation. Research and the staged PX-1 through PX-6 plan are recorded
+in `docs/coordination/reviews/2026-08-07-product-experience-redesign.md`.
+Sources include Apple Human Interface Guidelines, Notion navigation/shortcut
+documentation, WCAG 2.2, and established password-manager terminology. The
+requested `terminal-browser` attachment failed because this shell could not
+attach to its rewritten Ghostty pane; a compatible Chromium driver audited the
+local app with synthetic data at desktop and compact sizes. No external state or
+real credential was used.
+
+TASK-0033 is `active`, owned by `/root`, and has no commit or reviewer. Its
+candidate is currently uncommitted in the shared worktree. Dirty paths are:
+
+```text
+M  apps/web/scripts/test-production.mjs
+M  apps/web/src/app.tsx
+M  apps/web/src/item-editor.tsx
+M  apps/web/src/styles.css
+M  apps/web/test/browser/app.browser.tsx
+?? docs/coordination/reviews/2026-08-07-product-experience-redesign.md
+?? docs/coordination/tasks/0033-product-experience-foundation.md
+```
+
+The candidate implements only PX-1: local visual tokens and surface hierarchy,
+responsive lock/header treatment, a compact truthful safety notice, scannable
+item rows and human-readable type labels, native collapsed credential-generator
+disclosure, and explicit forced-colors/reduced-motion styles. It does not change
+crypto, protocol, worker, persistence, recovery, metadata, network, dependency,
+telemetry, search, sorting, clipboard, idle lock, or public API behavior.
+
+Verified on the exact uncommitted tree:
+
+```text
+./node_modules/.bin/tsc --build --pretty false                         pass
+./node_modules/.bin/biome check <targeted UI/test files>                pass
+./node_modules/.bin/vitest run --passWithNoTests                         pass; 13 files / 110 tests
+apps/web: ./node_modules/.bin/vite build                                 pass
+apps/web: node scripts/verify-build.mjs                                  pass; Verified 7 production files
+git diff --check                                                         pass
+```
+
+The browser Vitest run was attempted from `apps/web` and failed before tests
+because the sandbox denied its ephemeral IPv6 listener (`EPERM`). An escalated
+rerun was requested, then the user stopped it; it has no result. The exact-CSP
+production flow and browser matrix therefore remain unrun for TASK-0033. No
+connected CI run, deployment, Stage 5 approval, or permission to use real
+credentials is claimed.
+
+## Next safe direction
+
+1. Verify this handoff and the dirty paths before resuming.
+2. Run the browser matrix and exact-CSP production flow explicitly; inspect
+   320/390/760/761/desktop widths, generator closed/open behavior, masked and
+   revealed detail states, focus, overflow, forced colors, and reduced motion.
+3. Fix only findings within TASK-0033, run the full declared gate set, and
+   commit one identifiable candidate.
+4. Move TASK-0033 to `review`, clear implementation ownership, and assign a
+   separate reviewer. Do not mark it `done` without P0/P1/P2 review evidence.
+5. After TASK-0033 closes, return to the previously queued ADR-0016 idle
+   auto-lock preflight and independent ADR review. Keep recovery wording,
+   clipboard, wordlist delimiter, search, service-worker delivery, and
+   schema-driven item types separate.
+
+Explicit non-goals for the next session: no real credentials, no deployment, no
+connected-CI claim, no ADR-0016 implementation, no broad formatter/dependency
+upgrade, no task self-approval, and no deletion/reset of the uncommitted paths.
+
+## Independent audit and authorized visual redesign — 2026-08-15
+
+The user asked for an explanation of the repository, an evidence-based audit
+with external references, and a UI/UX pass, then explicitly authorized a
+complete visual redesign including a different theme.
+
+### New audit artifact (outside TASK-0033's allowed paths)
+
+`docs/coordination/reviews/2026-08-15-independent-audit.md` is a read-only audit
+record written in this session. It is **not** a TASK-0033 deliverable and closes
+no acceptance criterion. It is listed here so the next session does not mistake
+it for task output. Its P1 findings are: no idle auto-lock; a recovery kit that
+must be retyped by hand with no safe alternative; no artifact-level evidence of
+independent review (all 73 commits share one Git identity); and **`git remote -v`
+is empty, so `.github/workflows/ci.yml` has never executed** — every gate result
+in this repository, including today's, is single-machine evidence.
+
+### TASK-0033 candidate extended, still uncommitted and unreviewed
+
+The candidate now carries a full visual redesign inside the same allowed paths.
+The complete rationale and measurements are in the TASK-0033 progress log. In
+summary: light-first palette with a dark inversion under `prefers-color-scheme`
+(previously dark-only); indigo `#3d4bc7` accent replacing mint `#72dfc1`;
+**Lock now** demoted from destructive to secondary styling because locking is a
+safe action; the never-loaded `Inter` font declaration removed; decorative
+per-type row monograms; `Tags` moved below the type-specific editor fields; and
+absent optional lists no longer rendered as `[]`.
+
+`apps/web/scripts/test-production.mjs` had its accent literal retargeted from
+`rgb(114, 223, 193)` to `rgb(61, 75, 199)`. The assertion's intent — the list
+action is a filled primary at compact widths and transparent at desktop — is
+unchanged; only the colour probe moved.
+
+The complete declared gate set passed on this exact tree without retry,
+including `test:browser` (4 files / 37 Chromium plus 3 files / 3 engine-matrix)
+and the exact-CSP `test:production` flow. The vault-worker artifact is
+byte-identical to the previous checkpoint at 663.18 kB, consistent with the
+claim that nothing outside the window UI changed.
+
+`.claude/launch.json` is a new untracked local dev-server convenience file. It
+is not referenced by any build, test, or gate, and may be deleted freely.
+
+### TASK-0034 and TASK-0035 — two decisions drafted, neither accepted
+
+After rejecting a first, largely cosmetic UI pass, the user directed that the
+two long-blocked decisions be written instead of more interface work. Both are
+now filed, both are in `review`, and **neither ADR is accepted**.
+
+- **TASK-0034** reserves `docs/decisions/0016-idle-auto-lock.md`. The ADR
+  proposes a worker-owned session lifetime with an idle limit and an absolute
+  ceiling, evaluated as a deadline on every worker operation rather than counted
+  down by a window timer. Only an explicit user-driven `extend-session` request
+  extends a session, which deliberately excludes the existing TOTP freshness
+  watchdog; otherwise an open TOTP item would hold a vault unlocked forever.
+  Non-monotonic wall-clock movement locks. Warning lead is 30 seconds, above
+  WCAG 2.2 SC 2.2.1's 20-second floor.
+- **TASK-0035** reserves
+  `docs/decisions/0017-bounded-local-item-search.md`. The ADR separates
+  in-memory search from persisted indexing and proposes only the former:
+  worker-computed, over title and type, deterministic and unranked, bounded by
+  byte/result/time limits, with no query or index retained anywhere. It
+  explicitly does **not** authorise envelope kind `0x12`, so ADR 0010's index
+  shard reservation stays unused and its leakage question stays open.
+
+ADR numbers 0016 and 0017 were confirmed free before reservation. Neither task
+touches the stale C3 reservations or the unexplained C4 gaps; those still need
+an owning task.
+
+Two pre-acceptance verification items are **unrun**: per-engine behaviour of
+dedicated worker timers in a fully backgrounded tab (ADR 0016), and cross-engine
+agreement on Unicode default case folding (ADR 0017).
+
+If both are accepted, their worker-protocol increments must be sequenced rather
+than merged into one version.
+
+### Next safe action
+
+Unchanged in shape from the previous checkpoint: commit one identifiable
+candidate, move TASK-0033 to `review`, clear implementation ownership, and
+assign a separate reviewer. The redesign is broader than the original PX-1
+description, so the reviewer must be pointed at the extended progress-log entry
+and must re-derive the retargeted production assertion rather than assume it.
+Do not treat any gate result above as approval; nothing here was independently
+reviewed.

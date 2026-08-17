@@ -484,13 +484,13 @@ try {
   await page.waitForFunction(
     () =>
       getComputedStyle(document.querySelector(".item-list .section-heading button"))
-        .backgroundColor === "rgb(112, 225, 200)",
+        .backgroundColor === "rgb(61, 75, 199)",
   );
   assert.equal(
     await page
       .getByRole("button", { name: "Create item" })
       .evaluate((node) => getComputedStyle(node).backgroundColor),
-    "rgb(112, 225, 200)",
+    "rgb(61, 75, 199)",
   );
   await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
   await page.getByRole("form", { name: "Create item" }).waitFor();
@@ -544,7 +544,7 @@ try {
     await page
       .getByRole("button", { name: "Create your first item" })
       .evaluate((node) => getComputedStyle(node).backgroundColor),
-    "rgb(112, 225, 200)",
+    "rgb(61, 75, 199)",
   );
 
   const originalTitle = "Production CRUD fixture";
@@ -581,6 +581,10 @@ try {
   await createForm.getByLabel("Username").fill(username);
   await createForm.getByLabel("Store a notes field").check();
   await createForm.getByLabel("Notes", { exact: true }).fill(loginNotes);
+  const credentialGenerator = createForm.locator(".generator-disclosure");
+  assert.equal(await credentialGenerator.getAttribute("open"), null);
+  await activateWithKeyboard(page, credentialGenerator.locator("summary"));
+  assert.notEqual(await credentialGenerator.getAttribute("open"), null);
   await activateWithKeyboard(page, createForm.getByRole("button", { name: "Generate password" }));
   await page.waitForFunction(() => document.querySelector("#item-password")?.value.length === 20);
   assert.equal(
@@ -847,6 +851,7 @@ try {
 
   await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
   const cancelledForm = page.getByRole("form", { name: "Create item" });
+  await activateWithKeyboard(page, cancelledForm.locator(".generator-disclosure summary"));
   await cancelledForm.getByLabel("Random-word passphrase").check();
   await activateWithKeyboard(
     page,
@@ -867,6 +872,7 @@ try {
 
   await activateWithKeyboard(page, page.getByRole("button", { name: "Create item" }));
   const lockForm = page.getByRole("form", { name: "Create item" });
+  await activateWithKeyboard(page, lockForm.locator(".generator-disclosure summary"));
   await lockForm.getByLabel("Random-word passphrase").check();
   await activateWithKeyboard(page, lockForm.getByRole("button", { name: "Generate passphrase" }));
   await page
@@ -1121,6 +1127,40 @@ try {
     true,
   );
   await mobileContext.close();
+
+  const preferenceContext = await browser.newContext({
+    forcedColors: "active",
+    reducedMotion: "reduce",
+    viewport: { width: 390, height: 844 },
+  });
+  const preferencePage = await preferenceContext.newPage();
+  await preferencePage.goto(origin);
+  await preferencePage.getByRole("heading", { name: "Welcome back" }).waitFor();
+  assert.equal(
+    await preferencePage.evaluate(
+      () =>
+        matchMedia("(forced-colors: active)").matches &&
+        matchMedia("(prefers-reduced-motion: reduce)").matches,
+    ),
+    true,
+  );
+  assert.equal(
+    await preferencePage
+      .getByRole("button", { name: "Unlock vault" })
+      .evaluate((node) => getComputedStyle(node).transitionDuration),
+    "0s",
+  );
+  assert.equal(
+    await preferencePage
+      .getByLabel("Development safety warning")
+      .evaluate((node) => getComputedStyle(node).borderTopStyle),
+    "solid",
+  );
+  assert.equal(
+    await preferencePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    true,
+  );
+  await preferenceContext.close();
 
   process.stdout.write("Production CSP Chromium flow passed.\n");
 } finally {

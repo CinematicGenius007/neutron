@@ -245,6 +245,24 @@ const detailLabels: Readonly<Record<string, string>> = Object.freeze({
   value: "JSON value",
 });
 
+const itemTypeLabels: Readonly<Record<VaultItem["type"], string>> = Object.freeze({
+  "backup-code": "Backup codes",
+  json: "JSON",
+  login: "Login",
+  "secure-note": "Secure note",
+  totp: "TOTP",
+});
+
+// Decorative row anchors derived from the visible type label; they add no
+// information and are hidden from assistive technology.
+const itemTypeMonograms: Readonly<Record<VaultItem["type"], string>> = Object.freeze({
+  "backup-code": "BC",
+  json: "{}",
+  login: "LG",
+  "secure-note": "SN",
+  totp: "2FA",
+});
+
 function detailLabel(key: string): string {
   return detailLabels[key] ?? key;
 }
@@ -265,7 +283,18 @@ function isSecretDetailField(item: VaultItem, key: string): boolean {
 }
 
 function detailValue(value: unknown): string {
-  return typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? "");
+  if (typeof value === "string") return value;
+  // Tags and backup codes are string arrays; showing them as JSON literals makes
+  // an ordinary list read like raw data. Every other value keeps JSON form.
+  if (Array.isArray(value) && value.every((entry) => typeof entry === "string"))
+    return value.join("\n");
+  return JSON.stringify(value, null, 2) ?? "";
+}
+
+// An absent optional list carries no information, so it is omitted rather than
+// rendered as an empty literal.
+function isEmptyDetailField(value: unknown): boolean {
+  return Array.isArray(value) && value.length === 0;
 }
 
 function ItemDetails({
@@ -303,7 +332,7 @@ function ItemDetails({
     <article className="item-detail" aria-labelledby="item-detail-title">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">{item.type}</p>
+          <p className="eyebrow">{itemTypeLabels[item.type]}</p>
           <h2 id="item-detail-title" ref={focusHeading} tabIndex={-1}>
             {item.title}
           </h2>
@@ -323,6 +352,7 @@ function ItemDetails({
       <dl>
         {Object.entries(item).map(([key, value]) => {
           if (key === "schemaVersion" || key === "type" || key === "title") return null;
+          if (isEmptyDetailField(value)) return null;
           const secret = isSecretDetailField(item, key);
           const visible = !secret || revealed.has(key);
           const label = detailLabel(key);
@@ -862,17 +892,50 @@ export function VaultApp({
 
   return (
     <main className={screen === "unlocked" ? "vault-shell" : "centered-shell"}>
-      <header className="brand">
-        <img src="/icon.svg" width="44" height="44" alt="" />
-        <div>
-          <span>Neutron</span>
-          <small>Local encrypted vault</small>
+      {/* One persistent application header. When the vault is unlocked it also
+          carries the vault title, the session indicator, and the lock control,
+          so those never scroll away from the person using them. */}
+      <div className="app-header">
+        <div className="app-bar">
+          <header className="brand">
+            <img src="/icon.svg" width="28" height="28" alt="" />
+            <div>
+              <span>Neutron</span>
+              <small>Local encrypted vault</small>
+            </div>
+          </header>
+          {screen === "unlocked" && metadata !== undefined ? (
+            <div className="app-bar-session">
+              <h1 className="app-bar-title" ref={focusHeading} tabIndex={-1}>
+                Your vault
+              </h1>
+              <p className="eyebrow session-state">
+                <span aria-hidden="true" /> Unlocked on this device
+              </p>
+              <div className="lock-action">
+                <button
+                  type="button"
+                  className="secondary"
+                  aria-describedby="lock-warning"
+                  onClick={() => void lock()}
+                >
+                  Lock now
+                </button>
+                <p id="lock-warning">Locks immediately and discards unsaved changes.</p>
+              </div>
+            </div>
+          ) : null}
         </div>
-      </header>
-      <aside className="safety-notice" aria-label="Development safety warning">
-        <strong>Development build — synthetic test data only.</strong> Neutron has not passed its
-        Stage 5 security review. Do not store real credentials.
-      </aside>
+        <aside className="safety-notice" aria-label="Development safety warning">
+          <span className="safety-mark" aria-hidden="true">
+            !
+          </span>
+          <span>
+            <strong>Development build — synthetic test data only.</strong> Neutron has not passed
+            its Stage 5 security review. Do not store real credentials.
+          </span>
+        </aside>
+      </div>
       {operationStatus === undefined ? null : (
         <p className="visually-hidden" role="status" key={operationStatus.id}>
           {operationStatus.message}
@@ -1001,25 +1064,6 @@ export function VaultApp({
 
       {screen === "unlocked" && metadata !== undefined ? (
         <section className="workspace" aria-label="Unlocked vault">
-          <div className="vault-toolbar">
-            <div>
-              <p className="eyebrow">Unlocked locally</p>
-              <h1 ref={focusHeading} tabIndex={-1}>
-                Your vault
-              </h1>
-            </div>
-            <div className="lock-action">
-              <button
-                type="button"
-                className="danger"
-                aria-describedby="lock-warning"
-                onClick={() => void lock()}
-              >
-                Lock now
-              </button>
-              <p id="lock-warning">Locks immediately and discards unsaved changes.</p>
-            </div>
-          </div>
           <div
             className="vault-grid"
             data-active-pane={editor !== undefined || selected !== undefined ? "detail" : "list"}
@@ -1081,9 +1125,9 @@ export function VaultApp({
                       ? "Your vault has no items yet."
                       : "No items on this page."}
                   </p>
-                  {isFirstUseEmptyPage ? (
-                    <p>Create a login, secure note, TOTP seed, backup code, or JSON item.</p>
-                  ) : null}
+                  {/* The actionable first-use guidance lives once, in the detail
+                      pane. At compact widths the promoted list action above
+                      carries it instead. */}
                 </div>
               ) : page === undefined ? null : (
                 <ul>
@@ -1095,8 +1139,16 @@ export function VaultApp({
                         aria-current={selected?.id === item.id ? "true" : undefined}
                         onClick={() => requestNavigation({ id: item.id, kind: "item" })}
                       >
-                        <span>{item.title}</span>
-                        <small>{item.type}</small>
+                        <span className="item-row-mark" aria-hidden="true">
+                          {itemTypeMonograms[item.type]}
+                        </span>
+                        <span className="item-row-content">
+                          <span className="item-row-title">{item.title}</span>
+                          <small>{itemTypeLabels[item.type]}</small>
+                        </span>
+                        <span className="item-row-cue" aria-hidden="true">
+                          ›
+                        </span>
                       </button>
                     </li>
                   ))}
@@ -1202,7 +1254,10 @@ export function VaultApp({
                       </p>
                       <p className="eyebrow">Empty vault</p>
                       <h2>Create your first encrypted item</h2>
-                      <p>The item type, title, and every field are encrypted before storage.</p>
+                      <p>
+                        Store a login, secure note, TOTP seed, backup code, or JSON item. The item
+                        type, title, and every field are encrypted before storage.
+                      </p>
                       <button type="button" onClick={() => requestNavigation({ kind: "create" })}>
                         Create your first item
                       </button>

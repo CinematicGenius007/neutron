@@ -207,7 +207,7 @@ async function render(
 
 function byText(text: string): HTMLElement {
   const match = [
-    ...(container?.querySelectorAll<HTMLElement>("button, h1, h2, p, output") ?? []),
+    ...(container?.querySelectorAll<HTMLElement>("button, h1, h2, p, output, summary") ?? []),
   ].find((element) => element.textContent?.includes(text));
   if (match === undefined) throw new Error(`missing text: ${text}`);
   return match;
@@ -241,6 +241,13 @@ async function toggle(id: string): Promise<void> {
   const checkbox = container?.querySelector<HTMLInputElement>(`#${id}`);
   if (checkbox === null || checkbox === undefined) throw new Error(`missing checkbox: ${id}`);
   await act(async () => checkbox.click());
+}
+
+async function openCredentialGenerator(): Promise<void> {
+  const disclosure = container?.querySelector<HTMLDetailsElement>(".generator-disclosure");
+  if (disclosure === null || disclosure === undefined)
+    throw new Error("missing credential generator");
+  if (!disclosure.open) await click("Generate a strong credential");
 }
 
 async function submitForm(name: string): Promise<void> {
@@ -628,6 +635,10 @@ describe("React vault shell", () => {
     await enter("unlock-password", "synthetic master password");
     await click("Unlock vault");
     await click("Create item");
+    const disclosure = container?.querySelector<HTMLDetailsElement>(".generator-disclosure");
+    expect(disclosure?.open).toBe(false);
+    await openCredentialGenerator();
+    expect(disclosure?.open).toBe(true);
     expect(value("password-generator-length")).toBe("20");
     for (const key of ["lowercase", "uppercase", "digits", "symbols"])
       expect(
@@ -690,6 +701,7 @@ describe("React vault shell", () => {
     await enter("unlock-password", "synthetic master password");
     await click("Unlock vault");
     await click("Create item");
+    await openCredentialGenerator();
     await toggle("generator-mode-passphrase");
     act(() => byText("Generate passphrase").click());
     await act(async () => Promise.resolve());
@@ -706,6 +718,7 @@ describe("React vault shell", () => {
     await enter("unlock-password", "synthetic master password");
     await click("Unlock vault");
     await click("Create item");
+    await openCredentialGenerator();
     await choose("item-type", "totp");
     await enter("item-title", "Rendered TOTP");
     await enter("item-totp-secret", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ");
@@ -806,6 +819,7 @@ describe("React vault shell", () => {
     expect(container?.textContent).not.toContain(generatedSecret);
 
     await click("Create item");
+    await openCredentialGenerator();
     act(() => byText("Generate password").click());
     await act(async () => Promise.resolve());
     await click("Lock now");

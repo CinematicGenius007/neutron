@@ -59,6 +59,14 @@ interface ValidationAlert extends DraftIssue {
 
 const encoder = new TextEncoder();
 
+const itemTypeHints: Readonly<Record<ItemType, string>> = Object.freeze({
+  "backup-code": "One-time recovery codes issued by another service, one per line.",
+  json: "Arbitrary structured data stored as a JSON document.",
+  login: "A username and password, optionally with a site address and notes.",
+  "secure-note": "Free text with no fixed fields.",
+  totp: "A two-factor seed this device turns into rotating verification codes.",
+});
+
 function initialDraft(item?: VaultItem): ItemDraft {
   return {
     accountName: item?.type === "totp" ? (item.accountName ?? "") : "",
@@ -515,19 +523,40 @@ export function ItemEditor({
       <form aria-label={editing ? "Edit item" : "Create item"} onSubmit={submit} noValidate>
         <fieldset className="editor-fields" disabled={busy}>
           <legend className="visually-hidden">Item fields</legend>
-          <label htmlFor="item-type">Type</label>
-          <select
-            id="item-type"
-            value={draft.type}
-            disabled={editing || busy}
-            onChange={(event) => requestType(event.currentTarget.value as ItemType)}
-          >
-            <option value="login">Login</option>
-            <option value="secure-note">Secure note</option>
-            <option value="totp">TOTP seed</option>
-            <option value="backup-code">Backup codes</option>
-            <option value="json">JSON</option>
-          </select>
+          <div className="field-row">
+            <div>
+              <label htmlFor="item-type">Type</label>
+              <select
+                id="item-type"
+                aria-describedby="item-type-hint"
+                value={draft.type}
+                disabled={editing || busy}
+                onChange={(event) => requestType(event.currentTarget.value as ItemType)}
+              >
+                <option value="login">Login</option>
+                <option value="secure-note">Secure note</option>
+                <option value="totp">TOTP seed</option>
+                <option value="backup-code">Backup codes</option>
+                <option value="json">JSON</option>
+              </select>
+              {/* Plain-language description of the selected type. It restates no
+                  stored value and adds no field. */}
+              <p className="field-hint type-hint" id="item-type-hint">
+                {itemTypeHints[draft.type]}
+              </p>
+            </div>
+            <div>
+              <label htmlFor="item-title">Title</label>
+              <input
+                id="item-title"
+                {...invalidProps("item-title")}
+                value={draft.title}
+                maxLength={256}
+                required
+                onChange={(event) => field("title", event.currentTarget.value)}
+              />
+            </div>
+          </div>
           {pendingType === undefined ? null : (
             <fieldset className="discard-confirmation">
               <legend ref={focusEditorElement} tabIndex={-1}>
@@ -551,25 +580,6 @@ export function ItemEditor({
               </div>
             </fieldset>
           )}
-
-          <label htmlFor="item-title">Title</label>
-          <input
-            id="item-title"
-            {...invalidProps("item-title")}
-            value={draft.title}
-            maxLength={256}
-            required
-            onChange={(event) => field("title", event.currentTarget.value)}
-          />
-
-          <label htmlFor="item-tags">Tags, one per line</label>
-          <textarea
-            id="item-tags"
-            {...invalidProps("item-tags")}
-            value={draft.tags}
-            maxLength={8_255}
-            onChange={(event) => field("tags", event.currentTarget.value)}
-          />
 
           {draft.type === "login" ? (
             <>
@@ -605,109 +615,115 @@ export function ItemEditor({
                   {passwordVisible ? "Hide password" : "Show password"}
                 </button>
               </div>
-              <fieldset className="password-generator" aria-busy={generating}>
-                <legend>Generate a credential</legend>
-                <label className="check-label" htmlFor="generator-mode-password">
-                  <input
-                    id="generator-mode-password"
-                    type="radio"
-                    name="generator-mode"
-                    checked={generatorMode === "password"}
-                    onChange={() => changeGeneratorMode("password")}
-                  />
-                  Random-character password (recommended for stored credentials)
-                </label>
-                <label className="check-label" htmlFor="generator-mode-passphrase">
-                  <input
-                    id="generator-mode-passphrase"
-                    type="radio"
-                    name="generator-mode"
-                    checked={generatorMode === "passphrase"}
-                    onChange={() => changeGeneratorMode("passphrase")}
-                  />
-                  Random-word passphrase
-                </label>
-                {generatorMode === "password" ? (
-                  <>
-                    <label htmlFor="password-generator-length">Length</label>
+              <details className="generator-disclosure">
+                <summary>
+                  <span>Generate a strong credential</span>
+                  <small>Password and passphrase options</small>
+                </summary>
+                <fieldset className="password-generator" aria-busy={generating}>
+                  <legend className="visually-hidden">Generate a credential</legend>
+                  <label className="check-label" htmlFor="generator-mode-password">
                     <input
-                      id="password-generator-length"
-                      type="number"
-                      min={16}
-                      max={128}
-                      step={1}
-                      value={generatorOptions.length}
-                      onChange={(event) =>
-                        generatorOption("length", Number(event.currentTarget.value))
-                      }
+                      id="generator-mode-password"
+                      type="radio"
+                      name="generator-mode"
+                      checked={generatorMode === "password"}
+                      onChange={() => changeGeneratorMode("password")}
                     />
-                    {(
-                      [
-                        ["lowercase", "Lowercase letters"],
-                        ["uppercase", "Uppercase letters"],
-                        ["digits", "Digits"],
-                        ["symbols", "Symbols"],
-                      ] as const
-                    ).map(([key, label]) => (
-                      <label
-                        className="check-label"
-                        htmlFor={`password-generator-${key}`}
-                        key={key}
-                      >
-                        <input
-                          id={`password-generator-${key}`}
-                          type="checkbox"
-                          checked={generatorOptions[key]}
-                          onChange={(event) => generatorOption(key, event.currentTarget.checked)}
-                        />
-                        {label}
-                      </label>
-                    ))}
-                    <p className="field-hint">
-                      Character classes are allowed sets; each selected class may not appear every
-                      time.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <label htmlFor="passphrase-generator-words">Words</label>
+                    Random-character password (recommended for stored credentials)
+                  </label>
+                  <label className="check-label" htmlFor="generator-mode-passphrase">
                     <input
-                      id="passphrase-generator-words"
-                      type="number"
-                      min={7}
-                      max={24}
-                      step={1}
-                      value={passphraseOptions.words}
-                      onChange={(event) => passphraseOption(Number(event.currentTarget.value))}
+                      id="generator-mode-passphrase"
+                      type="radio"
+                      name="generator-mode"
+                      checked={generatorMode === "passphrase"}
+                      onChange={() => changeGeneratorMode("passphrase")}
                     />
-                    <p className="field-hint">
-                      Eight words provide about 103.4 bits of ideal search space. Passphrases are
-                      intended for human entry; they are not stronger than an equivalent random
-                      password.
+                    Random-word passphrase
+                  </label>
+                  {generatorMode === "password" ? (
+                    <>
+                      <label htmlFor="password-generator-length">Length</label>
+                      <input
+                        id="password-generator-length"
+                        type="number"
+                        min={16}
+                        max={128}
+                        step={1}
+                        value={generatorOptions.length}
+                        onChange={(event) =>
+                          generatorOption("length", Number(event.currentTarget.value))
+                        }
+                      />
+                      {(
+                        [
+                          ["lowercase", "Lowercase letters"],
+                          ["uppercase", "Uppercase letters"],
+                          ["digits", "Digits"],
+                          ["symbols", "Symbols"],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <label
+                          className="check-label"
+                          htmlFor={`password-generator-${key}`}
+                          key={key}
+                        >
+                          <input
+                            id={`password-generator-${key}`}
+                            type="checkbox"
+                            checked={generatorOptions[key]}
+                            onChange={(event) => generatorOption(key, event.currentTarget.checked)}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                      <p className="field-hint">
+                        Character classes are allowed sets; each selected class may not appear every
+                        time.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <label htmlFor="passphrase-generator-words">Words</label>
+                      <input
+                        id="passphrase-generator-words"
+                        type="number"
+                        min={7}
+                        max={24}
+                        step={1}
+                        value={passphraseOptions.words}
+                        onChange={(event) => passphraseOption(Number(event.currentTarget.value))}
+                      />
+                      <p className="field-hint">
+                        Eight words provide about 103.4 bits of ideal search space. Passphrases are
+                        intended for human entry; they are not stronger than an equivalent random
+                        password.
+                      </p>
+                      <p className="field-hint">{EFF_LONG_WORDLIST_ATTRIBUTION}</p>
+                    </>
+                  )}
+                  {generationError === undefined ? null : (
+                    <p className="error" role="alert">
+                      {generationError}
                     </p>
-                    <p className="field-hint">{EFF_LONG_WORDLIST_ATTRIBUTION}</p>
-                  </>
-                )}
-                {generationError === undefined ? null : (
-                  <p className="error" role="alert">
-                    {generationError}
-                  </p>
-                )}
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={busy}
-                  onClick={() => void requestGeneratedSecret()}
-                >
-                  {generating
-                    ? generatorMode === "password"
-                      ? "Generate another password"
-                      : "Generate another passphrase"
-                    : generatorMode === "password"
-                      ? "Generate password"
-                      : "Generate passphrase"}
-                </button>
-              </fieldset>
+                  )}
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => void requestGeneratedSecret()}
+                  >
+                    {generating
+                      ? generatorMode === "password"
+                        ? "Generate another password"
+                        : "Generate another passphrase"
+                      : generatorMode === "password"
+                        ? "Generate password"
+                        : "Generate passphrase"}
+                  </button>
+                </fieldset>
+              </details>
               <label className="check-label" htmlFor="item-has-url">
                 <input
                   id="item-has-url"
@@ -905,6 +921,17 @@ export function ItemEditor({
               />
             </>
           ) : null}
+
+          {/* Tags are an optional organisation aid, so they follow the fields
+              that define the item rather than preceding them. */}
+          <label htmlFor="item-tags">Tags, one per line</label>
+          <textarea
+            id="item-tags"
+            {...invalidProps("item-tags")}
+            value={draft.tags}
+            maxLength={8_255}
+            onChange={(event) => field("tags", event.currentTarget.value)}
+          />
 
           <div className="editor-actions">
             <button type="submit" disabled={busy || generating}>

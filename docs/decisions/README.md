@@ -17,6 +17,11 @@ Accepted ADRs are binding until superseded by a newer accepted ADR.
 | [0013](0013-rfc6238-totp-computation.md) | Accepted | Worker-bound RFC 6238 TOTP computation policy |
 | [0014](0014-passphrase-generation-policy.md) | Superseded | Digest-pinned EFF wordlist passphrase generation policy |
 | [0015](0015-passphrase-policy-audit-corrections.md) | Accepted | Corrected EFF-wordlist passphrase policy |
+| [0016](0016-idle-auto-lock.md) | Proposed | Idle auto-lock and unlocked-session lifetime |
+| [0017](0017-bounded-local-item-search.md) | Proposed | Bounded in-memory local item search; no persisted index |
+
+A `Proposed` row is a reserved filename and a draft. It binds nothing and must
+not be implemented against until an independent reviewer accepts it.
 
 Use [ADR_TEMPLATE.md](ADR_TEMPLATE.md) for a new decision. Do not edit the
 rationale of an accepted ADR to make a later choice appear inevitable; supersede
